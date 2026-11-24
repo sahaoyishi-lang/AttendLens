@@ -31,14 +31,16 @@ def get_db():
 # ----------------- MODELS -----------------
 
 class User(Base):
-    """User account model for Teachers, Admins, and Staff"""
+    """User account model for Teachers, Admins, Staff, and Students"""
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
     full_name = Column(String(255), nullable=False)
     hashed_password = Column(String(255), nullable=True)
-    role = Column(String(50), default="teacher", nullable=False) # 'admin', 'teacher'
+    role = Column(String(50), default="teacher", nullable=False) # 'admin', 'teacher', 'student'
+    roll_number = Column(String(50), unique=True, index=True, nullable=True) # Student registration / roll number
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=True) # Linked student record
     is_active = Column(Boolean, default=True)
     auth_provider = Column(String(50), default="local") # 'local', 'google'
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -46,6 +48,7 @@ class User(Base):
     # Relationships
     sessions = relationship("ClassSession", back_populates="teacher")
     audit_logs = relationship("AuditLog", back_populates="teacher")
+    student_profile = relationship("Student")
 
 
 class InstitutionConfig(Base):
@@ -206,3 +209,16 @@ class Enrollment(Base):
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    # Lightweight schema migration for SQLite to ensure roll_number & student_id columns exist
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            if DATABASE_URL.startswith("sqlite"):
+                cols = [c[1] for c in conn.execute(text("PRAGMA table_info(users)")).fetchall()]
+                if "roll_number" not in cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN roll_number VARCHAR(50)"))
+                if "student_id" not in cols:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN student_id INTEGER REFERENCES students(id)"))
+                conn.commit()
+    except Exception as e:
+        print(f"[DB Migration Note] {e}")

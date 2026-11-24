@@ -9,6 +9,7 @@ Tests:
 """
 import os
 import sys
+import random
 
 def run_tests():
     print("=" * 60)
@@ -220,6 +221,48 @@ def run_tests():
     assert enroll_data["success"] is True
     assert enroll_data["student"]["roll_number"] == "DETS-26-EIE-021"
     print(f"  ✓ POST /api/student/enroll registered student: {enroll_data['student']['full_name']} into {enroll_data['subject']['code']}")
+
+    # Test Student Account Creation / Sign Up with Registration Number
+    signup_roll = f"DETS-26-EIE-0{random.randint(30, 99)}"
+    res_signup = client.post("/api/student/signup", json={
+        "roll_number": signup_roll,
+        "full_name": "Kavita S. Murthy",
+        "email": f"kavita.{random.randint(100, 999)}@dets.edu",
+        "password": "Password@123",
+        "semester": "Semester 6"
+    })
+    assert res_signup.status_code == 200
+    signup_data = res_signup.json()
+    assert signup_data["user"]["role"] == "student"
+    assert signup_data["student"]["roll_number"] == signup_roll
+    stud_token = signup_data["access_token"]
+    print(f"  ✓ POST /api/student/signup created student account for {signup_roll} ({signup_data['user']['full_name']})")
+
+    # Test Student Login using Registration Number
+    res_login = client.post("/api/student/login", json={
+        "identifier": signup_roll,
+        "password": "Password@123"
+    })
+    assert res_login.status_code == 200
+    login_data = res_login.json()
+    assert login_data["student"]["roll_number"] == signup_roll
+    print(f"  ✓ POST /api/student/login successfully authenticated {signup_roll} via Registration Number")
+
+    # Test Student Profile & Attendance Breakdown
+    res_me = client.get("/api/student/me", headers={"Authorization": f"Bearer {stud_token}"})
+    assert res_me.status_code == 200
+    me_data = res_me.json()
+    assert me_data["roll_number"] == signup_roll
+    assert "enrolled_subjects" in me_data
+    assert "overall_attendance_rate" in me_data
+    print(f"  ✓ GET /api/student/me retrieved profile: {me_data['full_name']} with {len(me_data['enrolled_subjects'])} subjects, overall rate: {me_data['overall_attendance_rate']}%")
+
+    # Test Student 1-Click Demo Login
+    res_demo = client.post("/api/student/demo-login/DETS-26-EIE-001")
+    assert res_demo.status_code == 200
+    demo_data = res_demo.json()
+    assert demo_data["student"]["roll_number"] == "DETS-26-EIE-001"
+    print(f"  ✓ POST /api/student/demo-login/DETS-26-EIE-001 authenticated demo student: {demo_data['user']['full_name']}")
 
     # Test BLE Session Start & Student Check-In Receipt
     res_ble_start = client.post("/api/ble/start-session", json={"subject_id": 1, "duration_minutes": 2})

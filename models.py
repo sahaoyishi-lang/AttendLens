@@ -25,6 +25,8 @@ class UserResponse(BaseModel):
     role: str
     auth_provider: str
     is_active: bool
+    roll_number: Optional[str] = None
+    student_id: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -261,3 +263,50 @@ class StudentEnrollResponse(BaseModel):
     message: str
     student: Dict[str, Any]
     subject: Dict[str, Any]
+
+# ----------------- STUDENT AUTH & ACCOUNT CREATION -----------------
+
+class StudentRegisterRequest(BaseModel):
+    roll_number: str # e.g. "DETS-26-EIE-022"
+    full_name: str
+    email: str
+    password: str
+    department_id: Optional[int] = 1
+    semester: Optional[str] = "Semester 6"
+    academic_year: Optional[str] = "2026-2027"
+
+class StudentLoginRequest(BaseModel):
+    identifier: str # roll_number OR email
+    password: str
+
+class StudentSubjectAttendance(BaseModel):
+    subject_id: int
+    subject_code: str
+    subject_name: str
+    classes_held: int
+    classes_attended: int
+    attendance_percent: float
+    status: str # 'Safe' vs 'Shortage'
+    classes_needed_for_75: int
+    min_threshold: float
+
+class StudentProfileResponse(BaseModel):
+    id: int
+    roll_number: str
+    full_name: str
+    email: str
+    department_id: int
+    department_name: Optional[str] = None
+    semester: str
+    academic_year: str
+    overall_attendance_rate: float
+    total_classes_held: int
+    total_classes_attended: int
+    enrolled_subjects: List[StudentSubjectAttendance]
+
+class StudentAuthResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
+    student: Dict[str, Any]
+    attendance_summary: Optional[Dict[str, Any]] = None

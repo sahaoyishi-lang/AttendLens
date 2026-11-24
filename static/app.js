@@ -128,6 +128,10 @@ function updateUserUI() {
 }
 
 async function handleDemoSwitch(role) {
+  if (role === "student") {
+    window.location.href = "/student";
+    return;
+  }
   try {
     const res = await fetch(`/api/auth/demo-login/${role}`, { method: "POST" });
     if (res.ok) {

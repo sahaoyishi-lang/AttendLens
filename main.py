@@ -12,6 +12,7 @@ import random
 import datetime
 import base64
 import socket
+import math
 import qrcode
 from contextlib import asynccontextmanager
 from typing import List, Optional
@@ -23,6 +24,7 @@ from fastapi import (
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
 import cv2
@@ -42,7 +44,10 @@ from models import (
     BLEStartRequest, BLESessionResponse, BLEStudentCheckinRequest,
     BLECheckinResult, BLEStatusResponse, DashboardKPIs,
     SubjectAnalyticsSummary, StudentAnalyticsItem,
-    StudentEnrollRequest, StudentEnrollResponse
+    StudentEnrollRequest, StudentEnrollResponse,
+    StudentRegisterRequest, StudentLoginRequest,
+    StudentSubjectAttendance, StudentProfileResponse,
+    StudentAuthResponse
 )
 from seed_data import seed_all, hash_pw, verify_pw
 from services.sheet_generator import (
@@ -90,6 +95,42 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> Optiona
         return user or db.query(User).filter_by(role="teacher").first()
     except JWTError:
         return db.query(User).filter_by(role="teacher").first()
+
+def get_current_student(request: Request, db: Session = Depends(get_db)) -> User:
+    """Extract authenticated student from token or fallback to demo student"""
+    auth_header = request.headers.get("Authorization")
+    token = None
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+    elif "access_token" in request.cookies:
+        token = request.cookies.get("access_token")
+
+    if not token:
+        demo_student = db.query(User).filter_by(role="student").first()
+        if demo_student:
+            return demo_student
+        raise HTTPException(status_code=401, detail="Authentication required. Please sign in.")
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+        if not user_id:
+            demo_student = db.query(User).filter_by(role="student").first()
+            if demo_student:
+                return demo_student
+            raise HTTPException(status_code=401, detail="Invalid token")
+        user = db.query(User).filter_by(id=int(user_id)).first()
+        if not user:
+            demo_student = db.query(User).filter_by(role="student").first()
+            if demo_student:
+                return demo_student
+            raise HTTPException(status_code=401, detail="User not found")
+        return user
+    except JWTError:
+        demo_student = db.query(User).filter_by(role="student").first()
+        if demo_student:
+            return demo_student
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -859,6 +900,302 @@ def student_self_enroll(payload: StudentEnrollRequest, db: Session = Depends(get
             "name": subject.name,
             "min_threshold": subject.min_threshold
         }
+    }
+
+# -------------------------------------------------------------
+# STUDENT SIGNUP, AUTHENTICATION & PERSONAL DASHBOARD
+# -------------------------------------------------------------
+
+@app.post("/api/student/signup", response_model=StudentAuthResponse)
+def student_signup(payload: StudentRegisterRequest, db: Session = Depends(get_db)):
+    """
+    Enables a student to sign up using their university Registration / Roll Number,
+    Full Name, Email, and Password. Creates both User account (role=student) and 
+    Student roster record (if not already existing) and auto-enrolls in department subjects.
+    """
+    roll = payload.roll_number.strip().upper()
+    full_name = payload.full_name.strip()
+    email = payload.email.strip().lower()
+    password = payload.password.strip()
+
+    if not roll or not full_name or not email or not password:
+        raise HTTPException(status_code=400, detail="Registration number, full name, email, and password are required.")
+
+    if len(password) < 4:
+        raise HTTPException(status_code=400, detail="Password must be at least 4 characters.")
+
+    # 1. Check if user account already exists with this email or roll_number
+    existing_user_email = db.query(User).filter_by(email=email).first()
+    if existing_user_email:
+        raise HTTPException(status_code=400, detail="An account with this email already exists. Please sign in.")
+
+    existing_user_roll = db.query(User).filter_by(roll_number=roll).first()
+    if existing_user_roll:
+        raise HTTPException(status_code=400, detail=f"An account for registration number '{roll}' already exists. Please sign in.")
+
+    # 2. Check or create Student roster record
+    student = db.query(Student).filter_by(roll_number=roll).first()
+    if not student:
+        student = Student(
+            roll_number=roll,
+            full_name=full_name,
+            email=email,
+            department_id=payload.department_id or 1,
+            semester=payload.semester or "Semester 6",
+            academic_year=payload.academic_year or "2026-2027",
+            is_active=True
+        )
+        db.add(student)
+        db.commit()
+        db.refresh(student)
+    else:
+        # Update details if previously stubbed
+        student.full_name = full_name
+        student.email = email
+        db.commit()
+
+    # 3. Create User account
+    user = User(
+        email=email,
+        full_name=full_name,
+        hashed_password=hash_pw(password),
+        role="student",
+        roll_number=roll,
+        student_id=student.id,
+        auth_provider="local",
+        is_active=True
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    # 4. Auto-enroll in department subjects if no enrollments exist
+    dept_subjects = db.query(Subject).filter_by(department_id=student.department_id).all()
+    for subj in dept_subjects:
+        enroll = db.query(Enrollment).filter_by(student_id=student.id, subject_id=subj.id).first()
+        if not enroll:
+            db.add(Enrollment(student_id=student.id, subject_id=subj.id, status="active"))
+    db.commit()
+
+    # 5. Issue JWT access token
+    token = create_access_token({
+        "sub": str(user.id),
+        "role": "student",
+        "roll_number": roll,
+        "email": email,
+        "student_id": student.id
+    })
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": user,
+        "student": {
+            "id": student.id,
+            "roll_number": student.roll_number,
+            "full_name": student.full_name,
+            "email": student.email,
+            "department_id": student.department_id,
+            "semester": student.semester,
+            "academic_year": student.academic_year
+        }
+    }
+
+
+@app.post("/api/student/login", response_model=StudentAuthResponse)
+def student_login(payload: StudentLoginRequest, db: Session = Depends(get_db)):
+    """
+    Student login using Registration / Roll Number OR Email + Password.
+    """
+    ident = payload.identifier.strip()
+    password = payload.password.strip()
+
+    if not ident or not password:
+        raise HTTPException(status_code=400, detail="Registration number/email and password are required.")
+
+    # Match by roll_number (case-insensitive upper) or email (case-insensitive lower)
+    user = db.query(User).filter(
+        or_(
+            User.roll_number == ident.upper(),
+            User.email == ident.lower()
+        )
+    ).first()
+
+    if not user or not user.hashed_password or not verify_pw(password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid registration number/email or password.")
+
+    # Find associated student record
+    student = None
+    if user.student_id:
+        student = db.query(Student).filter_by(id=user.student_id).first()
+    if not student and user.roll_number:
+        student = db.query(Student).filter_by(roll_number=user.roll_number).first()
+    if not student:
+        student = db.query(Student).filter_by(email=user.email).first()
+
+    if not student:
+        raise HTTPException(status_code=404, detail="Student roster record not found for this account.")
+
+    token = create_access_token({
+        "sub": str(user.id),
+        "role": user.role,
+        "roll_number": student.roll_number,
+        "email": user.email,
+        "student_id": student.id
+    })
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": user,
+        "student": {
+            "id": student.id,
+            "roll_number": student.roll_number,
+            "full_name": student.full_name,
+            "email": student.email,
+            "department_id": student.department_id,
+            "semester": student.semester,
+            "academic_year": student.academic_year
+        }
+    }
+
+
+@app.post("/api/student/demo-login/{roll_number}", response_model=StudentAuthResponse)
+def student_demo_login(roll_number: str, db: Session = Depends(get_db)):
+    """
+    1-Click Demo Login as any student (e.g. DETS-26-EIE-001) for fast evaluation.
+    """
+    roll = roll_number.strip().upper()
+    student = db.query(Student).filter_by(roll_number=roll).first()
+    if not student:
+        raise HTTPException(status_code=404, detail=f"Student {roll} not found in roster.")
+
+    user = db.query(User).filter(or_(User.roll_number == roll, User.email == student.email)).first()
+    if not user:
+        user = User(
+            email=student.email,
+            full_name=student.full_name,
+            hashed_password=hash_pw("Student@123"),
+            role="student",
+            roll_number=roll,
+            student_id=student.id,
+            auth_provider="local",
+            is_active=True
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    token = create_access_token({
+        "sub": str(user.id),
+        "role": "student",
+        "roll_number": roll,
+        "email": user.email,
+        "student_id": student.id
+    })
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": user,
+        "student": {
+            "id": student.id,
+            "roll_number": student.roll_number,
+            "full_name": student.full_name,
+            "email": student.email,
+            "department_id": student.department_id,
+            "semester": student.semester,
+            "academic_year": student.academic_year
+        }
+    }
+
+
+@app.get("/api/student/me", response_model=StudentProfileResponse)
+def get_student_me(current_student: User = Depends(get_current_student), db: Session = Depends(get_db)):
+    """
+    Retrieves the authenticated student's profile, overall attendance rate,
+    and per-subject attendance breakdown with 75% shortage recovery metrics.
+    """
+    student = None
+    if current_student.student_id:
+        student = db.query(Student).filter_by(id=current_student.student_id).first()
+    if not student and current_student.roll_number:
+        student = db.query(Student).filter_by(roll_number=current_student.roll_number).first()
+    if not student:
+        student = db.query(Student).filter_by(email=current_student.email).first()
+
+    if not student:
+        raise HTTPException(status_code=404, detail="Student roster record not found.")
+
+    dept = db.query(Department).filter_by(id=student.department_id).first()
+    dept_name = dept.name if dept else "Engineering"
+
+    # Enrolled subjects
+    enrollments = db.query(Enrollment).filter_by(student_id=student.id).all()
+    subject_ids = [e.subject_id for e in enrollments]
+    
+    # Fallback to department subjects if no explicit enrollments
+    if not subject_ids:
+        dept_subjs = db.query(Subject).filter_by(department_id=student.department_id).all()
+        subject_ids = [s.id for s in dept_subjs]
+
+    subjects = db.query(Subject).filter(Subject.id.in_(subject_ids)).all() if subject_ids else []
+
+    enrolled_list = []
+    total_held_all = 0
+    total_attended_all = 0
+
+    for subj in subjects:
+        # Total sessions held for this subject
+        sessions = db.query(ClassSession).filter_by(subject_id=subj.id).all()
+        session_ids = [s.id for s in sessions]
+        held = len(session_ids)
+
+        attended = 0
+        if held > 0:
+            attended = db.query(AttendanceRecord).filter(
+                AttendanceRecord.session_id.in_(session_ids),
+                AttendanceRecord.student_id == student.id,
+                AttendanceRecord.status == "P"
+            ).count()
+
+        pct = round((attended / held * 100.0), 1) if held > 0 else 100.0
+        status_val = "Safe" if pct >= subj.min_threshold else "Shortage"
+
+        needed = 0
+        if held > 0 and pct < subj.min_threshold:
+            needed = max(0, math.ceil((0.75 * held - attended) / 0.25))
+
+        total_held_all += held
+        total_attended_all += attended
+
+        enrolled_list.append({
+            "subject_id": subj.id,
+            "subject_code": subj.code,
+            "subject_name": subj.name,
+            "classes_held": held,
+            "classes_attended": attended,
+            "attendance_percent": pct,
+            "status": status_val,
+            "classes_needed_for_75": needed,
+            "min_threshold": subj.min_threshold
+        })
+
+    overall_pct = round((total_attended_all / total_held_all * 100.0), 1) if total_held_all > 0 else 100.0
+
+    return {
+        "id": student.id,
+        "roll_number": student.roll_number,
+        "full_name": student.full_name,
+        "email": student.email,
+        "department_id": student.department_id,
+        "department_name": dept_name,
+        "semester": student.semester,
+        "academic_year": student.academic_year,
+        "overall_attendance_rate": overall_pct,
+        "total_classes_held": total_held_all,
+        "total_classes_attended": total_attended_all,
+        "enrolled_subjects": enrolled_list
     }
 
 @app.get("/api/ble/session/{session_token}/status", response_model=BLEStatusResponse)

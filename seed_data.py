@@ -135,6 +135,23 @@ def seed_all(db: Session):
             db.commit()
         students_list.append(stud)
 
+    # 5b. Pre-seed demo student user account for 1-click evaluation (Aarav Patel)
+    first_student = students_list[0] if students_list else db.query(Student).first()
+    if first_student:
+        demo_student_user = db.query(User).filter_by(roll_number=first_student.roll_number).first()
+        if not demo_student_user:
+            demo_student_user = User(
+                email=first_student.email,
+                full_name=first_student.full_name,
+                hashed_password=hash_pw("Student@123"),
+                role="student",
+                roll_number=first_student.roll_number,
+                student_id=first_student.id,
+                auth_provider="local"
+            )
+            db.add(demo_student_user)
+            db.commit()
+
     # 6. Historical Class Sessions & Attendance (12 sessions across subjects)
     existing_sessions = db.query(ClassSession).count()
     if existing_sessions == 0:

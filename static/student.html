@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>AttendLens — Student Portal & Proximity Check-In</title>
+  <title>AttendLens — Student Portal & Account Hub</title>
   
   <!-- PWA Meta Tags & Manifest -->
   <link rel="manifest" href="/static/manifest.json">
@@ -52,6 +52,10 @@
       color: #0d9488 !important;
       background-color: #f0fdfa;
     }
+    .auth-toggle-active {
+      background-color: #0d9488 !important;
+      color: #ffffff !important;
+    }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans antialiased">
@@ -69,28 +73,42 @@
             <span class="text-base font-bold tracking-tight text-white">Attend<span class="text-teal-400">Lens</span></span>
             <span class="px-2 py-0.5 text-[9px] font-bold bg-teal-900/80 text-teal-300 border border-teal-700/60 rounded-full">Student</span>
           </div>
-          <p class="text-[11px] text-slate-400 truncate max-w-[210px]">DETS • Engineering & Tech Studies</p>
+          <p class="text-[11px] text-slate-400 truncate max-w-[190px]">DETS • Engineering & Tech Studies</p>
         </div>
       </div>
 
-      <!-- Optional PWA Install Button -->
-      <button id="pwa-install-btn" class="hidden flex items-center space-x-1 px-2.5 py-1 text-xs font-bold bg-teal-600 hover:bg-teal-500 text-white rounded-lg shadow-sm transition">
-        <i data-lucide="download" class="w-3.5 h-3.5"></i>
-        <span>Install App</span>
-      </button>
+      <div class="flex items-center space-x-2">
+        <!-- Optional PWA Install Button -->
+        <button id="pwa-install-btn" class="hidden flex items-center space-x-1 px-2.5 py-1 text-xs font-bold bg-teal-600 hover:bg-teal-500 text-white rounded-lg shadow-sm transition">
+          <i data-lucide="download" class="w-3.5 h-3.5"></i>
+          <span>Install</span>
+        </button>
+
+        <!-- Auth Status Chip / Button -->
+        <div id="student-header-auth">
+          <button onclick="switchStudentTab('account')" class="px-2.5 py-1 text-xs font-bold bg-slate-800 hover:bg-slate-700 text-teal-300 border border-teal-700/50 rounded-lg transition flex items-center space-x-1">
+            <i data-lucide="user" class="w-3.5 h-3.5"></i>
+            <span id="header-auth-label">Sign In</span>
+          </button>
+        </div>
+      </div>
 
     </div>
   </header>
 
   <!-- DEDICATED STUDENT NAVIGATION TABS -->
   <nav class="bg-white border-b border-slate-200 sticky top-16 z-30 shadow-xs">
-    <div class="max-w-md mx-auto px-4 flex space-x-2 py-2">
-      <button onclick="switchStudentTab('checkin')" id="tab-btn-checkin" class="tab-btn tab-active flex-1 flex items-center justify-center space-x-2 py-2 text-xs font-bold rounded-lg border border-transparent transition">
-        <i data-lucide="radio" class="w-4 h-4"></i>
-        <span>Proximity Check-In</span>
+    <div class="max-w-md mx-auto px-4 flex space-x-1.5 py-2">
+      <button onclick="switchStudentTab('account')" id="tab-btn-account" class="tab-btn tab-active flex-1 flex items-center justify-center space-x-1.5 py-2 text-xs font-bold rounded-lg border border-transparent transition">
+        <i data-lucide="user-check" class="w-4 h-4"></i>
+        <span>My Account</span>
       </button>
-      <button onclick="switchStudentTab('enroll')" id="tab-btn-enroll" class="tab-btn flex-1 flex items-center justify-center space-x-2 py-2 text-xs font-bold rounded-lg border border-transparent transition text-slate-600 hover:text-teal-600">
-        <i data-lucide="user-plus" class="w-4 h-4"></i>
+      <button onclick="switchStudentTab('checkin')" id="tab-btn-checkin" class="tab-btn flex-1 flex items-center justify-center space-x-1.5 py-2 text-xs font-bold rounded-lg border border-transparent transition text-slate-600 hover:text-teal-600">
+        <i data-lucide="radio" class="w-4 h-4"></i>
+        <span>Check-In</span>
+      </button>
+      <button onclick="switchStudentTab('enroll')" id="tab-btn-enroll" class="tab-btn flex-1 flex items-center justify-center space-x-1.5 py-2 text-xs font-bold rounded-lg border border-transparent transition text-slate-600 hover:text-teal-600">
+        <i data-lucide="book-open" class="w-4 h-4"></i>
         <span>Course Enrollment</span>
       </button>
     </div>
@@ -100,9 +118,197 @@
   <main class="flex-1 max-w-md w-full mx-auto px-4 py-5 space-y-5">
 
     <!-- ========================================================= -->
-    <!-- TAB 1: PROXIMITY ATTENDANCE CHECK-IN -->
+    <!-- TAB 1: MY ACCOUNT (SIGN UP / SIGN IN / PERSONAL DASHBOARD) -->
     <!-- ========================================================= -->
-    <section id="student-view-checkin" class="space-y-4">
+    <section id="student-view-account" class="space-y-4">
+      
+      <!-- Unauthenticated View: Sign Up & Sign In Tabs -->
+      <div id="auth-forms-card" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        
+        <div class="flex items-center space-x-3 pb-3 border-b border-slate-100">
+          <div class="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center shrink-0">
+            <i data-lucide="shield-check" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h2 class="text-sm font-bold text-slate-900">Student Account Portal</h2>
+            <p class="text-[11px] text-slate-500">Sign up with your registration number or sign in.</p>
+          </div>
+        </div>
+
+        <!-- Mode Toggle Pill Bar -->
+        <div class="bg-slate-100 p-1 rounded-xl flex text-xs font-bold">
+          <button type="button" onclick="toggleAuthMode('signup')" id="toggle-btn-signup" class="flex-1 py-1.5 rounded-lg transition auth-toggle-active">
+            Sign Up (New)
+          </button>
+          <button type="button" onclick="toggleAuthMode('login')" id="toggle-btn-login" class="flex-1 py-1.5 rounded-lg transition text-slate-600">
+            Sign In
+          </button>
+          <button type="button" onclick="toggleAuthMode('demo')" id="toggle-btn-demo" class="flex-1 py-1.5 rounded-lg transition text-slate-600">
+            ⚡ Demo
+          </button>
+        </div>
+
+        <!-- 1. SIGN UP FORM -->
+        <form id="student-signup-form" onsubmit="handleStudentSignup(event)" class="space-y-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Registration / Roll Number</label>
+            <input type="text" id="signup-roll" required placeholder="e.g. DETS-26-EIE-022" class="w-full text-xs font-semibold uppercase bg-slate-50 border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-teal-500">
+            <p class="text-[10px] text-slate-400 mt-0.5">Use your official university registration number.</p>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Full Name</label>
+            <input type="text" id="signup-name" required placeholder="e.g. Ananya Sengupta" class="w-full text-xs font-semibold bg-slate-50 border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-teal-500">
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Institutional Email</label>
+            <input type="email" id="signup-email" required placeholder="e.g. ananya.s@dets.edu" class="w-full text-xs font-semibold bg-slate-50 border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-teal-500">
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Create Password</label>
+              <input type="password" id="signup-password" required minlength="4" placeholder="••••••••" class="w-full text-xs font-semibold bg-slate-50 border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-teal-500">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Semester</label>
+              <input type="text" id="signup-semester" value="Semester 6" class="w-full text-xs font-medium bg-slate-100 border border-slate-300 rounded-xl p-3" readonly>
+            </div>
+          </div>
+
+          <button type="submit" id="signup-submit-btn" class="w-full flex items-center justify-center space-x-2 px-4 py-3 text-xs sm:text-sm font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-xl shadow-md shadow-teal-600/20 transition active:scale-[0.99]">
+            <i data-lucide="user-plus" class="w-4 h-4"></i>
+            <span>Create My Student Account</span>
+          </button>
+        </form>
+
+        <!-- 2. SIGN IN FORM -->
+        <form id="student-login-form" onsubmit="handleStudentLogin(event)" class="hidden space-y-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Registration No. OR Email</label>
+            <input type="text" id="login-identifier" required placeholder="DETS-26-EIE-001 or email@dets.edu" class="w-full text-xs font-semibold bg-slate-50 border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-teal-500">
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Password</label>
+            <input type="password" id="login-password" required placeholder="••••••••" class="w-full text-xs font-semibold bg-slate-50 border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-teal-500">
+          </div>
+
+          <button type="submit" id="login-submit-btn" class="w-full flex items-center justify-center space-x-2 px-4 py-3 text-xs sm:text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl shadow-md transition active:scale-[0.99]">
+            <i data-lucide="log-in" class="w-4 h-4 text-teal-400"></i>
+            <span>Sign In to Student Account</span>
+          </button>
+        </form>
+
+        <!-- 3. DEMO LOGIN BUTTONS -->
+        <div id="student-demo-pane" class="hidden space-y-2.5">
+          <p class="text-[11px] text-slate-500">1-Click instant login for hackathon judges and evaluators:</p>
+          
+          <button type="button" onclick="loginDemoStudent('DETS-26-EIE-001')" class="w-full p-3 rounded-xl border border-teal-200 bg-teal-50/60 hover:bg-teal-100/60 text-left flex items-center justify-between transition">
+            <div>
+              <span class="text-xs font-bold text-teal-950 block">Aarav S. Patel</span>
+              <span class="text-[10px] font-mono text-teal-700">DETS-26-EIE-001 • Good Standing (90%+)</span>
+            </div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-teal-600"></i>
+          </button>
+
+          <button type="button" onclick="loginDemoStudent('DETS-26-EIE-007')" class="w-full p-3 rounded-xl border border-amber-200 bg-amber-50/60 hover:bg-amber-100/60 text-left flex items-center justify-between transition">
+            <div>
+              <span class="text-xs font-bold text-amber-950 block">Vikram K. Rao</span>
+              <span class="text-[10px] font-mono text-amber-700">DETS-26-EIE-007 • At Risk (~66%)</span>
+            </div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-amber-600"></i>
+          </button>
+
+          <button type="button" onclick="loginDemoStudent('DETS-26-EIE-012')" class="w-full p-3 rounded-xl border border-rose-200 bg-rose-50/60 hover:bg-rose-100/60 text-left flex items-center justify-between transition">
+            <div>
+              <span class="text-xs font-bold text-rose-950 block">Pooja L. Menon</span>
+              <span class="text-[10px] font-mono text-rose-700">DETS-26-EIE-012 • Debarred Shortage (50%)</span>
+            </div>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-rose-600"></i>
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Authenticated View: Student Digital ID & Attendance Card -->
+      <div id="authenticated-dashboard" class="hidden space-y-4">
+        
+        <!-- Digital Student ID Card -->
+        <div class="bg-gradient-to-tr from-slate-900 to-slate-800 text-white p-5 rounded-2xl shadow-md border border-slate-700 space-y-4">
+          
+          <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+              <div id="student-avatar" class="w-12 h-12 rounded-xl bg-gradient-to-tr from-teal-500 to-emerald-400 text-slate-950 font-black text-lg flex items-center justify-center shadow-md">
+                AS
+              </div>
+              <div>
+                <h3 id="student-profile-name" class="font-bold text-sm text-white">Student Name</h3>
+                <span id="student-profile-roll" class="font-mono text-xs text-teal-400 font-semibold">DETS-26-EIE-000</span>
+              </div>
+            </div>
+            <button onclick="studentLogout()" class="px-2.5 py-1 text-[11px] font-bold text-slate-400 hover:text-white bg-slate-800/80 hover:bg-slate-700 border border-slate-600/60 rounded-lg transition">
+              Sign Out
+            </button>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-slate-700/60">
+            <div>
+              <span class="text-[10px] text-slate-400 block uppercase">Department</span>
+              <span id="student-profile-dept" class="font-semibold text-slate-200 truncate block">Electronics & Instrumentation</span>
+            </div>
+            <div>
+              <span class="text-[10px] text-slate-400 block uppercase">Semester / Year</span>
+              <span id="student-profile-sem" class="font-semibold text-slate-200 block">Semester 6 • 2026-2027</span>
+            </div>
+          </div>
+
+          <!-- Overall Attendance Gauge Banner -->
+          <div class="bg-slate-800/80 p-3.5 rounded-xl border border-slate-700 flex items-center justify-between">
+            <div>
+              <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Overall Attendance Rate</span>
+              <span id="student-overall-pct" class="text-2xl font-black text-teal-400">0.0%</span>
+            </div>
+            <div id="student-status-badge">
+              <span class="px-3 py-1 text-xs font-bold rounded-full bg-emerald-900/60 text-emerald-300 border border-emerald-600/60">
+                ✓ Safe (&ge;75%)
+              </span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Quick Action: Jump to Check-In -->
+        <button onclick="switchStudentTab('checkin')" class="w-full flex items-center justify-center space-x-2 py-3 px-4 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl shadow-md shadow-teal-600/20 transition active:scale-[0.99]">
+          <i data-lucide="radio" class="w-4 h-4"></i>
+          <span>Check In to Classroom Beacon Now</span>
+        </button>
+
+        <!-- Course Attendance Breakdown -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+          <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+            <h4 class="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center space-x-1.5">
+              <i data-lucide="layers" class="w-4 h-4 text-teal-600"></i>
+              <span>Enrolled Courses Attendance</span>
+            </h4>
+            <span id="enrolled-course-count" class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600">0 Courses</span>
+          </div>
+
+          <div id="student-courses-list" class="space-y-3 pt-1">
+            <!-- Dynamically populated from /api/student/me -->
+            <p class="text-xs text-slate-400 text-center py-4">Loading your enrolled subjects...</p>
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ========================================================= -->
+    <!-- TAB 2: PROXIMITY ATTENDANCE CHECK-IN -->
+    <!-- ========================================================= -->
+    <section id="student-view-checkin" class="hidden space-y-4">
       
       <!-- Live Proximity Session Banner -->
       <div id="session-banner" class="p-3.5 rounded-xl border flex items-center justify-between text-xs transition bg-amber-50 border-amber-200 text-amber-900">
@@ -119,7 +325,19 @@
       <!-- Main Check-In Card -->
       <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
         
-        <div>
+        <!-- Authenticated Student Status Notice (if logged in) -->
+        <div id="checkin-auth-notice" class="hidden bg-teal-50 border border-teal-200 rounded-xl p-3 flex items-center justify-between">
+          <div class="flex items-center space-x-2">
+            <i data-lucide="shield-check" class="w-4 h-4 text-teal-600"></i>
+            <div>
+              <span class="text-[11px] text-teal-900 font-bold block" id="checkin-auth-student-name">Aarav S. Patel</span>
+              <span class="text-[10px] font-mono text-teal-700" id="checkin-auth-student-roll">DETS-26-EIE-001 (Verified Account)</span>
+            </div>
+          </div>
+          <span class="px-2 py-0.5 text-[9px] font-bold bg-teal-600 text-white rounded-full">Locked</span>
+        </div>
+
+        <div id="checkin-roll-input-container">
           <label class="block text-xs font-bold text-slate-700 uppercase mb-1.5 flex items-center justify-between">
             <span>Student Roll Number</span>
             <button type="button" onclick="toggleCustomRollInput()" class="text-[10px] text-teal-600 font-bold hover:underline lowercase">
@@ -213,7 +431,7 @@
     </section>
 
     <!-- ========================================================= -->
-    <!-- TAB 2: STUDENT COURSE SELF-ENROLLMENT -->
+    <!-- TAB 3: STUDENT COURSE SELF-ENROLLMENT -->
     <!-- ========================================================= -->
     <section id="student-view-enroll" class="hidden space-y-4">
       
@@ -296,6 +514,7 @@
     let activeSession = null;
     let pollInterval = null;
     let deferredPrompt = null;
+    let currentStudent = null;
 
     // Register Service Worker for PWA
     if ('serviceWorker' in navigator) {
@@ -324,6 +543,7 @@
 
     document.addEventListener('DOMContentLoaded', async () => {
       if (window.lucide) lucide.createIcons();
+      await checkExistingStudentSession();
       await loadStudentRoster();
       await loadEnrollmentSubjects();
       await checkActiveProximitySession();
@@ -344,6 +564,7 @@
         activeBtn.classList.remove('text-slate-600');
       }
 
+      document.getElementById('student-view-account').classList.add('hidden');
       document.getElementById('student-view-checkin').classList.add('hidden');
       document.getElementById('student-view-enroll').classList.add('hidden');
 
@@ -351,6 +572,251 @@
       if (target) target.classList.remove('hidden');
 
       if (window.lucide) lucide.createIcons();
+    }
+
+    function toggleAuthMode(mode) {
+      const btnSignup = document.getElementById('toggle-btn-signup');
+      const btnLogin = document.getElementById('toggle-btn-login');
+      const btnDemo = document.getElementById('toggle-btn-demo');
+
+      const formSignup = document.getElementById('student-signup-form');
+      const formLogin = document.getElementById('student-login-form');
+      const paneDemo = document.getElementById('student-demo-pane');
+
+      [btnSignup, btnLogin, btnDemo].forEach(b => {
+        b.className = 'flex-1 py-1.5 rounded-lg transition text-slate-600';
+      });
+
+      formSignup.classList.add('hidden');
+      formLogin.classList.add('hidden');
+      paneDemo.classList.add('hidden');
+
+      if (mode === 'signup') {
+        btnSignup.className = 'flex-1 py-1.5 rounded-lg transition auth-toggle-active';
+        formSignup.classList.remove('hidden');
+      } else if (mode === 'login') {
+        btnLogin.className = 'flex-1 py-1.5 rounded-lg transition auth-toggle-active';
+        formLogin.classList.remove('hidden');
+      } else if (mode === 'demo') {
+        btnDemo.className = 'flex-1 py-1.5 rounded-lg transition auth-toggle-active';
+        paneDemo.classList.remove('hidden');
+      }
+
+      if (window.lucide) lucide.createIcons();
+    }
+
+    async function checkExistingStudentSession() {
+      const token = localStorage.getItem('student_token');
+      if (!token) {
+        showUnauthenticatedAccountView();
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/student/me', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (res.ok) {
+          const profile = await res.json();
+          currentStudent = profile;
+          showAuthenticatedDashboard(profile);
+        } else {
+          localStorage.removeItem('student_token');
+          showUnauthenticatedAccountView();
+        }
+      } catch (err) {
+        console.error('Session verification error:', err);
+        showUnauthenticatedAccountView();
+      }
+    }
+
+    function showUnauthenticatedAccountView() {
+      currentStudent = null;
+      document.getElementById('auth-forms-card').classList.remove('hidden');
+      document.getElementById('authenticated-dashboard').classList.add('hidden');
+      document.getElementById('header-auth-label').textContent = 'Sign In';
+
+      // Reset check-in view lock
+      document.getElementById('checkin-auth-notice').classList.add('hidden');
+      document.getElementById('checkin-roll-input-container').classList.remove('hidden');
+    }
+
+    function showAuthenticatedDashboard(profile) {
+      document.getElementById('auth-forms-card').classList.add('hidden');
+      document.getElementById('authenticated-dashboard').classList.remove('hidden');
+
+      // Update header
+      document.getElementById('header-auth-label').textContent = profile.roll_number;
+
+      // Update ID Card
+      document.getElementById('student-profile-name').textContent = profile.full_name;
+      document.getElementById('student-profile-roll').textContent = profile.roll_number;
+      document.getElementById('student-profile-dept').textContent = profile.department_name || 'Engineering';
+      document.getElementById('student-profile-sem').textContent = `${profile.semester} • ${profile.academic_year}`;
+      document.getElementById('student-overall-pct').textContent = `${profile.overall_attendance_rate}%`;
+
+      // Initials Avatar
+      const initials = profile.full_name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+      document.getElementById('student-avatar').textContent = initials || 'ST';
+
+      // Status Badge
+      const statusBadge = document.getElementById('student-status-badge');
+      if (profile.overall_attendance_rate >= 75.0) {
+        statusBadge.innerHTML = `<span class="px-3 py-1 text-xs font-bold rounded-full bg-emerald-900/60 text-emerald-300 border border-emerald-600/60">✓ Safe (${profile.overall_attendance_rate}%)</span>`;
+      } else {
+        statusBadge.innerHTML = `<span class="px-3 py-1 text-xs font-bold rounded-full bg-rose-900/60 text-rose-300 border border-rose-600/60">⚠️ Shortage (${profile.overall_attendance_rate}%)</span>`;
+      }
+
+      // Populate Enrolled Courses Breakdown
+      const coursesList = document.getElementById('student-courses-list');
+      const coursesCount = document.getElementById('enrolled-course-count');
+      coursesCount.textContent = `${profile.enrolled_subjects.length} Courses`;
+
+      if (!profile.enrolled_subjects || profile.enrolled_subjects.length === 0) {
+        coursesList.innerHTML = `<p class="text-xs text-slate-400 text-center py-4">No enrolled courses found. Click the Enroll tab to register!</p>`;
+      } else {
+        coursesList.innerHTML = '';
+        profile.enrolled_subjects.forEach(sub => {
+          const isSafe = sub.attendance_percent >= sub.min_threshold;
+          const card = document.createElement('div');
+          card.className = 'p-3 rounded-xl border ' + (isSafe ? 'bg-slate-50 border-slate-200' : 'bg-rose-50/50 border-rose-200');
+          card.innerHTML = `
+            <div class="flex items-center justify-between">
+              <div>
+                <span class="text-xs font-bold text-slate-900 block">${sub.subject_code} — ${sub.subject_name}</span>
+                <span class="text-[10px] text-slate-500">${sub.classes_attended} attended of ${sub.classes_held} held</span>
+              </div>
+              <span class="px-2 py-0.5 text-[10px] font-bold rounded-full ${isSafe ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-rose-100 text-rose-800 border border-rose-200'}">
+                ${sub.attendance_percent}%
+              </span>
+            </div>
+            
+            <!-- Progress Bar -->
+            <div class="w-full bg-slate-200 rounded-full h-1.5 mt-2 overflow-hidden">
+              <div class="h-1.5 rounded-full ${isSafe ? 'bg-teal-500' : 'bg-rose-500'}" style="width: ${Math.min(100, sub.attendance_percent)}%"></div>
+            </div>
+
+            ${!isSafe && sub.classes_needed_for_75 > 0 ? `
+              <p class="text-[10px] text-rose-700 font-semibold mt-1.5 flex items-center space-x-1">
+                <span>⚠️ Need ${sub.classes_needed_for_75} consecutive classes to reach 75%</span>
+              </p>
+            ` : ''}
+          `;
+          coursesList.appendChild(card);
+        });
+      }
+
+      // Update Check-In tab to lock to this student
+      document.getElementById('checkin-auth-notice').classList.remove('hidden');
+      document.getElementById('checkin-auth-student-name').textContent = profile.full_name;
+      document.getElementById('checkin-auth-student-roll').textContent = `${profile.roll_number} (Verified Student)`;
+      document.getElementById('checkin-roll-input-container').classList.add('hidden');
+
+      // Pre-fill enrollment form
+      document.getElementById('enroll-name').value = profile.full_name;
+      document.getElementById('enroll-roll').value = profile.roll_number;
+      document.getElementById('enroll-email').value = profile.email;
+
+      if (window.lucide) lucide.createIcons();
+    }
+
+    async function handleStudentSignup(e) {
+      e.preventDefault();
+      const roll = document.getElementById('signup-roll').value.trim().toUpperCase();
+      const name = document.getElementById('signup-name').value.trim();
+      const email = document.getElementById('signup-email').value.trim().toLowerCase();
+      const password = document.getElementById('signup-password').value;
+      const semester = document.getElementById('signup-semester').value;
+
+      const btn = document.getElementById('signup-submit-btn');
+      btn.disabled = true;
+      btn.innerHTML = 'Creating Account...';
+
+      try {
+        const res = await fetch('/api/student/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            roll_number: roll,
+            full_name: name,
+            email: email,
+            password: password,
+            semester: semester
+          })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.access_token) {
+          localStorage.setItem('student_token', data.access_token);
+          showToast(`Welcome ${data.user.full_name}! Account created.`, 'success');
+          await checkExistingStudentSession();
+        } else {
+          showToast(data.detail || 'Sign up failed. Please check inputs.', 'error');
+        }
+      } catch (err) {
+        showToast('Sign up error: ' + err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i data-lucide="user-plus" class="w-4 h-4"></i><span>Create My Student Account</span>';
+        if (window.lucide) lucide.createIcons();
+      }
+    }
+
+    async function handleStudentLogin(e) {
+      e.preventDefault();
+      const ident = document.getElementById('login-identifier').value.trim();
+      const password = document.getElementById('login-password').value;
+
+      const btn = document.getElementById('login-submit-btn');
+      btn.disabled = true;
+      btn.innerHTML = 'Signing In...';
+
+      try {
+        const res = await fetch('/api/student/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier: ident, password: password })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.access_token) {
+          localStorage.setItem('student_token', data.access_token);
+          showToast(`Welcome back, ${data.user.full_name}!`, 'success');
+          await checkExistingStudentSession();
+        } else {
+          showToast(data.detail || 'Invalid registration number or password.', 'error');
+        }
+      } catch (err) {
+        showToast('Login error: ' + err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i data-lucide="log-in" class="w-4 h-4 text-teal-400"></i><span>Sign In to Student Account</span>';
+        if (window.lucide) lucide.createIcons();
+      }
+    }
+
+    async function loginDemoStudent(rollNumber) {
+      try {
+        showToast(`Signing in as ${rollNumber}...`, 'info');
+        const res = await fetch(`/api/student/demo-login/${rollNumber}`, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok && data.access_token) {
+          localStorage.setItem('student_token', data.access_token);
+          showToast(`Logged in as ${data.user.full_name}!`, 'success');
+          await checkExistingStudentSession();
+        } else {
+          showToast(data.detail || 'Demo login failed.', 'error');
+        }
+      } catch (err) {
+        showToast('Demo login error: ' + err.message, 'error');
+      }
+    }
+
+    function studentLogout() {
+      localStorage.removeItem('student_token');
+      showToast('Signed out of student account.', 'info');
+      showUnauthenticatedAccountView();
     }
 
     function toggleCustomRollInput() {
@@ -465,11 +931,15 @@
       const pin = document.getElementById('student-pin-input').value.trim();
       
       let roll = '';
-      const customInput = document.getElementById('student-roll-custom');
-      if (!customInput.classList.contains('hidden') && customInput.value.trim()) {
-        roll = customInput.value.trim().toUpperCase();
+      if (currentStudent && currentStudent.roll_number) {
+        roll = currentStudent.roll_number;
       } else {
-        roll = document.getElementById('student-roll-select').value;
+        const customInput = document.getElementById('student-roll-custom');
+        if (!customInput.classList.contains('hidden') && customInput.value.trim()) {
+          roll = customInput.value.trim().toUpperCase();
+        } else {
+          roll = document.getElementById('student-roll-select').value;
+        }
       }
 
       if (!pin) {
@@ -512,6 +982,11 @@
           // Clear PIN input
           document.getElementById('student-pin-input').value = '';
           receipt.scrollIntoView({ behavior: 'smooth' });
+
+          // Refresh student session metrics if logged in
+          if (currentStudent) {
+            await checkExistingStudentSession();
+          }
         } else {
           showToast(data.message, 'error');
         }
@@ -561,9 +1036,16 @@
           // Refresh student roster dropdown
           await loadStudentRoster();
 
-          // Reset form
-          document.getElementById('enrollment-form').reset();
-          document.getElementById('enroll-semester').value = 'Semester 6';
+          // Refresh student profile if logged in
+          if (currentStudent) {
+            await checkExistingStudentSession();
+          }
+
+          // Reset form (or keep prefilled if logged in)
+          if (!currentStudent) {
+            document.getElementById('enrollment-form').reset();
+            document.getElementById('enroll-semester').value = 'Semester 6';
+          }
           card.scrollIntoView({ behavior: 'smooth' });
         } else {
           showToast(data.detail || 'Enrollment failed.', 'error');
