@@ -44,6 +44,7 @@ env/
 uploads/
 generated_sheets/
 *.log
+cloudflared.exe
 
 # Editor & IDE directories
 .vscode/
