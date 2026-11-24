@@ -81,7 +81,7 @@ Every component, library, and framework used in AttendLens is licensed under per
 
 ### 1. Clone & Navigate
 ```bash
-git clone https://github.com/dets-hackathon/AttendLens.git
+git clone https://github.com/sahaoyishi-lang/AttendLens.git
 cd AttendLens
 ```
 
