@@ -172,8 +172,17 @@
               <input type="password" id="signup-password" required minlength="4" placeholder="••••••••" class="w-full text-xs font-semibold bg-slate-50 border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-teal-500">
             </div>
             <div>
-              <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Semester</label>
-              <input type="text" id="signup-semester" value="Semester 6" class="w-full text-xs font-medium bg-slate-100 border border-slate-300 rounded-xl p-3" readonly>
+              <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Select Semester</label>
+              <select id="signup-semester" class="w-full text-xs font-semibold bg-slate-50 border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-teal-500 cursor-pointer">
+                <option value="Semester 1">Semester 1 (1st Year)</option>
+                <option value="Semester 2">Semester 2 (1st Year)</option>
+                <option value="Semester 3">Semester 3 (2nd Year)</option>
+                <option value="Semester 4">Semester 4 (2nd Year)</option>
+                <option value="Semester 5">Semester 5 (3rd Year)</option>
+                <option value="Semester 6" selected>Semester 6 (3rd Year)</option>
+                <option value="Semester 7">Semester 7 (4th Year)</option>
+                <option value="Semester 8">Semester 8 (4th Year)</option>
+              </select>
             </div>
           </div>
 
@@ -460,8 +469,17 @@
               <input type="text" id="enroll-roll" required placeholder="DETS-26-EIE-021" class="w-full text-xs font-semibold uppercase bg-slate-50 border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-teal-500">
             </div>
             <div>
-              <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Semester</label>
-              <input type="text" id="enroll-semester" value="Semester 6" class="w-full text-xs font-medium bg-slate-100 border border-slate-300 rounded-xl p-3" readonly>
+              <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Select Semester</label>
+              <select id="enroll-semester" class="w-full text-xs font-semibold bg-slate-50 border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-teal-500 cursor-pointer">
+                <option value="Semester 1">Semester 1 (1st Year)</option>
+                <option value="Semester 2">Semester 2 (1st Year)</option>
+                <option value="Semester 3">Semester 3 (2nd Year)</option>
+                <option value="Semester 4">Semester 4 (2nd Year)</option>
+                <option value="Semester 5">Semester 5 (3rd Year)</option>
+                <option value="Semester 6" selected>Semester 6 (3rd Year)</option>
+                <option value="Semester 7">Semester 7 (4th Year)</option>
+                <option value="Semester 8">Semester 8 (4th Year)</option>
+              </select>
             </div>
           </div>
 
@@ -717,6 +735,9 @@
       document.getElementById('enroll-name').value = profile.full_name;
       document.getElementById('enroll-roll').value = profile.roll_number;
       document.getElementById('enroll-email').value = profile.email;
+      if (profile.semester) {
+        document.getElementById('enroll-semester').value = profile.semester;
+      }
 
       if (window.lucide) lucide.createIcons();
     }

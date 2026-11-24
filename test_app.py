@@ -222,21 +222,22 @@ def run_tests():
     assert enroll_data["student"]["roll_number"] == "DETS-26-EIE-021"
     print(f"  ✓ POST /api/student/enroll registered student: {enroll_data['student']['full_name']} into {enroll_data['subject']['code']}")
 
-    # Test Student Account Creation / Sign Up with Registration Number
+    # Test Student Account Creation / Sign Up with Registration Number and Custom Semester
     signup_roll = f"DETS-26-EIE-0{random.randint(30, 99)}"
     res_signup = client.post("/api/student/signup", json={
         "roll_number": signup_roll,
         "full_name": "Kavita S. Murthy",
         "email": f"kavita.{random.randint(100, 999)}@dets.edu",
         "password": "Password@123",
-        "semester": "Semester 6"
+        "semester": "Semester 4"
     })
     assert res_signup.status_code == 200
     signup_data = res_signup.json()
     assert signup_data["user"]["role"] == "student"
     assert signup_data["student"]["roll_number"] == signup_roll
+    assert signup_data["student"]["semester"] == "Semester 4"
     stud_token = signup_data["access_token"]
-    print(f"  ✓ POST /api/student/signup created student account for {signup_roll} ({signup_data['user']['full_name']})")
+    print(f"  ✓ POST /api/student/signup created student account for {signup_roll} ({signup_data['user']['full_name']}) in {signup_data['student']['semester']}")
 
     # Test Student Login using Registration Number
     res_login = client.post("/api/student/login", json={
@@ -253,6 +254,7 @@ def run_tests():
     assert res_me.status_code == 200
     me_data = res_me.json()
     assert me_data["roll_number"] == signup_roll
+    assert me_data["semester"] == "Semester 4"
     assert "enrolled_subjects" in me_data
     assert "overall_attendance_rate" in me_data
     print(f"  ✓ GET /api/student/me retrieved profile: {me_data['full_name']} with {len(me_data['enrolled_subjects'])} subjects, overall rate: {me_data['overall_attendance_rate']}%")

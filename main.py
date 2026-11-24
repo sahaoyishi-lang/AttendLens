@@ -869,6 +869,8 @@ def student_self_enroll(payload: StudentEnrollRequest, db: Session = Depends(get
     else:
         student.full_name = full_name
         student.email = email
+        if payload.semester:
+            student.semester = payload.semester.strip()
         student.is_active = True
         db.commit()
         db.refresh(student)
@@ -952,6 +954,8 @@ def student_signup(payload: StudentRegisterRequest, db: Session = Depends(get_db
         # Update details if previously stubbed
         student.full_name = full_name
         student.email = email
+        if payload.semester:
+            student.semester = payload.semester.strip()
         db.commit()
 
     # 3. Create User account
