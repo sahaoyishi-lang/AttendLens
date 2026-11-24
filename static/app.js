@@ -10,6 +10,33 @@ let activeBleToken = null;
 let bleTimerInterval = null;
 let subjectBarChartInstance = null;
 let shortageDoughnutChartInstance = null;
+let deferredPrompt = null;
+let customTunnelDebounce = null;
+
+// PWA Service Worker Registration
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/static/sw.js').catch(err => {
+      console.warn('Service worker registration failed:', err);
+    });
+  });
+}
+
+// PWA Install prompt listener
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const installBtn = document.getElementById('pwa-install-btn');
+  if (installBtn) {
+    installBtn.classList.remove('hidden');
+    installBtn.onclick = async () => {
+      installBtn.classList.add('hidden');
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice;
+      deferredPrompt = null;
+    };
+  }
+});
 
 // Initialize on DOM load
 document.addEventListener("DOMContentLoaded", async () => {
@@ -31,6 +58,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   await loadInstitutionConfig();
   await loadLicensesTable();
   await populateBLEStudentSelect();
+  await fetchNetworkInfo();
 });
 
 // -------------------------------------------------------------
@@ -69,6 +97,8 @@ function switchTab(tabId) {
     loadDashboardKPIs();
   } else if (tabId === "master-data") {
     loadInstitutionConfig();
+  } else if (tabId === "ble") {
+    fetchNetworkInfo();
   }
 }
 
@@ -600,6 +630,34 @@ function captureWebcamFrame() {
 // TAB 4: HANDS-FREE BLE / PROXIMITY DIGITAL CHECK-IN
 // -------------------------------------------------------------
 
+async function fetchNetworkInfo(customUrl = null) {
+  try {
+    const url = customUrl ? `/api/network-info?custom_url=${encodeURIComponent(customUrl)}` : '/api/network-info';
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const data = await res.json();
+    
+    const qrImg = document.getElementById("ble-qr-img");
+    const lanUrl = document.getElementById("ble-lan-url");
+    if (qrImg && data.qr_code_base64) {
+      qrImg.src = data.qr_code_base64;
+    }
+    if (lanUrl) {
+      lanUrl.href = data.student_url;
+      lanUrl.textContent = data.student_url;
+    }
+  } catch (e) {
+    console.error("Network info fetch error:", e);
+  }
+}
+
+function handleCustomTunnelChange(val) {
+  if (customTunnelDebounce) clearTimeout(customTunnelDebounce);
+  customTunnelDebounce = setTimeout(() => {
+    fetchNetworkInfo(val);
+  }, 400);
+}
+
 async function populateBLEStudentSelect() {
   try {
     const res = await fetch("/api/admin/students");
@@ -640,6 +698,9 @@ async function startBLESession() {
     document.getElementById("ble-start-btn").classList.add("hidden");
     document.getElementById("ble-close-btn").classList.remove("hidden");
 
+    // Make sure QR code matches current network URL
+    await fetchNetworkInfo();
+
     startBLETimer(data.duration_seconds);
     showToast(`2-minute proximity session started! PIN: ${data.pin_code}`, "success");
   } catch (e) {
@@ -679,14 +740,30 @@ async function pollBLEStatus() {
     document.getElementById("ble-checkedin-count").textContent = status.total_checked_in;
 
     const feed = document.getElementById("ble-live-feed");
-    if (status.students.length > 0) {
-      feed.innerHTML = "";
-      status.students.forEach(s => {
-        const item = document.createElement("div");
-        item.className = "flex items-center justify-between p-1.5 bg-emerald-50 border border-emerald-200 rounded text-emerald-900";
-        item.innerHTML = `<span class="font-bold">${s.roll_number}</span><span>${s.full_name}</span>`;
-        feed.appendChild(item);
-      });
+    if (feed) {
+      if (status.students && status.students.length > 0) {
+        feed.innerHTML = "";
+        status.students.forEach((s, idx) => {
+          const item = document.createElement("div");
+          item.className = "flex items-center justify-between p-2 bg-white border border-emerald-200/80 rounded-xl shadow-2xs text-xs";
+          item.innerHTML = `
+            <div class="flex items-center space-x-2.5">
+              <span class="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 font-bold flex items-center justify-center text-[10px] shrink-0">${idx + 1}</span>
+              <div>
+                <span class="font-bold text-slate-900 block">${s.roll_number}</span>
+                <span class="text-[11px] text-slate-500 block">${s.full_name}</span>
+              </div>
+            </div>
+            <span class="px-2 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full flex items-center space-x-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>Verified Live</span>
+            </span>
+          `;
+          feed.appendChild(item);
+        });
+      } else {
+        feed.innerHTML = `<p class="text-slate-400 italic text-center py-6">Waiting for students to scan QR or enter PIN...</p>`;
+      }
     }
   } catch (e) {
     console.error("BLE poll failed:", e);

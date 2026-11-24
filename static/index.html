@@ -5,6 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AttendLens — Intelligent Student Attendance & Paper-to-Digital OCR System</title>
   
+  <!-- PWA Manifest & Meta Tags -->
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#0f766e">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+
   <!-- Tailwind CSS CDN (MIT) -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -96,6 +104,12 @@
             <span id="user-role-badge" class="block text-[10px] font-medium text-teal-400 uppercase tracking-wider">Teacher</span>
           </div>
         </div>
+
+        <!-- PWA Install App Button -->
+        <button id="pwa-install-btn" class="hidden flex items-center space-x-1.5 px-3 py-1.5 text-xs font-bold bg-teal-600 hover:bg-teal-500 text-white rounded-lg shadow-sm transition">
+          <i data-lucide="download" class="w-3.5 h-3.5"></i>
+          <span class="hidden sm:inline">Install App</span>
+        </button>
 
         <!-- Quick 1-Click Demo Login Dropdown -->
         <div class="relative inline-block text-left">
@@ -410,11 +424,18 @@
             <span>⚡ Generate Sample Filled Sheet (1-Click Demo)</span>
           </button>
 
-          <!-- Upload from Local Disk -->
+          <!-- Upload / Camera Capture from Local Disk or Mobile Phone -->
           <label class="flex items-center space-x-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg cursor-pointer transition">
             <i data-lucide="upload" class="w-4 h-4 text-slate-500"></i>
             <span>Upload Image/PDF</span>
-            <input type="file" id="scan-file-input" accept="image/*,.pdf" onchange="handleFileUpload(this.files[0])" class="hidden">
+            <input type="file" id="scan-file-input" accept="image/*,.pdf" capture="environment" onchange="handleFileUpload(this.files[0])" class="hidden">
+          </label>
+
+          <!-- Native Mobile Rear Camera Snap -->
+          <label class="flex items-center space-x-1.5 px-3 py-2 text-xs font-semibold text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg cursor-pointer transition">
+            <i data-lucide="camera" class="w-4 h-4 text-teal-600"></i>
+            <span>Phone Camera Snap</span>
+            <input type="file" id="scan-camera-input" accept="image/*" capture="environment" onchange="handleFileUpload(this.files[0])" class="hidden">
           </label>
 
           <!-- Live Webcam Capture -->
@@ -590,49 +611,103 @@
           </div>
         </div>
 
-        <!-- Student Check-In Simulator Drawer (6 cols) -->
-        <div class="lg:col-span-6 bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-          <div class="flex items-center space-x-3 mb-4">
-            <div class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-              <i data-lucide="smartphone" class="w-5 h-5"></i>
-            </div>
-            <div>
-              <h2 class="text-base font-bold text-slate-900">Student Mobile Check-In Simulator</h2>
-              <p class="text-xs text-slate-500">Test student check-in with the active 4-digit PIN for any synthetic roll number.</p>
-            </div>
-          </div>
-
-          <hr class="border-slate-100 mb-5">
-
-          <div class="space-y-4">
-            <div>
-              <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Select Synthetic Student</label>
-              <select id="ble-student-select" class="w-full text-xs font-semibold bg-white border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500">
-                <!-- Dynamically populated -->
-              </select>
-            </div>
-
-            <div>
-              <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Enter 4-Digit Classroom PIN</label>
-              <input type="text" id="ble-pin-input" maxlength="4" placeholder="e.g. 4829" class="w-full text-center tracking-widest text-lg font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500">
-            </div>
-
-            <button onclick="submitStudentBLECheckin()" class="w-full flex items-center justify-center space-x-2 px-4 py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition">
-              <i data-lucide="check" class="w-4 h-4"></i>
-              <span>Submit Proximity Check-In</span>
-            </button>
-
-            <!-- Result Alert -->
-            <div id="ble-checkin-alert" class="hidden p-3 rounded-lg text-xs font-medium"></div>
-
-            <!-- Live List of Checked In Students in this session -->
-            <div class="pt-3 border-t border-slate-100">
-              <p class="text-xs font-bold text-slate-700 uppercase mb-2">Live Verified Attendance Feed:</p>
-              <div id="ble-live-feed" class="max-h-40 overflow-y-auto space-y-1 text-xs">
-                <p class="text-slate-400 italic">No check-ins yet. Start a session and enter a student PIN above.</p>
+        <!-- Student Mobile Connect & Scannable QR Card (6 cols) -->
+        <div class="lg:col-span-6 bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div>
+            <div class="flex items-center space-x-3 mb-4">
+              <div class="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                <i data-lucide="qr-code" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <h2 class="text-base font-bold text-slate-900">Student Mobile Connect</h2>
+                <p class="text-xs text-slate-500">Scan QR from any smartphone connected to the local hotspot or Wi-Fi.</p>
               </div>
             </div>
 
+            <hr class="border-slate-100 mb-4">
+
+            <div class="flex flex-col sm:flex-row items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <div class="bg-white p-2 rounded-xl border border-slate-300 shadow-xs shrink-0">
+                <img id="ble-qr-img" src="" alt="Student Connect QR" class="w-28 h-28 object-contain">
+              </div>
+              <div class="space-y-1.5 text-left w-full">
+                <span class="text-[10px] font-bold uppercase tracking-wider text-teal-800 bg-teal-100 px-2 py-0.5 rounded-full inline-block">Direct LAN Link</span>
+                <p class="text-xs font-bold text-slate-800">Direct Student URL:</p>
+                <a id="ble-lan-url" href="/student" target="_blank" class="block font-mono text-xs text-teal-700 hover:text-teal-800 underline font-semibold break-all">
+                  Loading LAN URL...
+                </a>
+                <p class="text-[11px] text-slate-500">Students open this page on mobile to check in or self-enroll.</p>
+              </div>
+            </div>
+
+            <!-- Optional Custom Tunnel / HTTPS URL Input -->
+            <div class="mt-4">
+              <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1 flex items-center justify-between">
+                <span>Custom Tunnel / HTTPS URL (Optional)</span>
+                <span class="text-[10px] text-slate-400 font-normal">e.g. ngrok / cloudflare</span>
+              </label>
+              <input type="text" id="custom-tunnel-input" oninput="handleCustomTunnelChange(this.value)" placeholder="https://your-tunnel-url.app" class="w-full text-xs font-mono bg-slate-50 border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-teal-500">
+            </div>
+          </div>
+
+          <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+            <span>● Auto LAN IP Detection Active</span>
+            <button onclick="fetchNetworkInfo()" class="text-teal-600 hover:underline font-semibold flex items-center space-x-1">
+              <i data-lucide="refresh-cw" class="w-3 h-3"></i>
+              <span>Refresh IP</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Second Row: Live Check-In Feed & Student Simulator Drawer -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Live Verified Attendance Feed (7 cols) -->
+        <div class="lg:col-span-7 bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center space-x-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <h3 class="text-xs font-bold text-slate-900 uppercase tracking-wider">Live Classroom Check-In Stream</h3>
+            </div>
+            <span class="text-[10px] font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded">Auto-refreshes every 3s</span>
+          </div>
+
+          <div id="ble-live-feed" class="flex-1 min-h-[140px] max-h-52 overflow-y-auto space-y-1.5 p-2 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+            <p class="text-slate-400 italic text-center py-6">No check-ins yet. Start a session or have students scan the QR code above.</p>
+          </div>
+        </div>
+
+        <!-- Fast Student Check-In Simulator Drawer (5 cols) -->
+        <div class="lg:col-span-5 bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div>
+            <div class="flex items-center space-x-2 font-bold text-xs text-slate-900 mb-1">
+              <i data-lucide="smartphone" class="w-4 h-4 text-blue-600"></i>
+              <span>Quick Browser Simulator</span>
+            </div>
+            <p class="text-[11px] text-slate-500 mb-3">Test student check-in without taking out a phone.</p>
+
+            <div class="space-y-2.5">
+              <div>
+                <label class="block text-[10px] font-bold text-slate-700 uppercase mb-1">Select Synthetic Student</label>
+                <select id="ble-student-select" class="w-full text-xs font-semibold bg-slate-50 border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500">
+                  <!-- Dynamically populated -->
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-[10px] font-bold text-slate-700 uppercase mb-1">Classroom PIN</label>
+                <input type="text" id="ble-pin-input" maxlength="4" placeholder="e.g. 4829" class="w-full text-center tracking-widest text-base font-mono font-bold bg-slate-50 border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-blue-500">
+              </div>
+
+              <button onclick="submitStudentBLECheckin()" class="w-full flex items-center justify-center space-x-2 px-3 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition">
+                <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                <span>Simulate Check-In</span>
+              </button>
+
+              <div id="ble-checkin-alert" class="hidden p-2 rounded-lg text-xs font-medium"></div>
+            </div>
           </div>
         </div>
 

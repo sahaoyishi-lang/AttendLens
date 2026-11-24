@@ -190,5 +190,19 @@ class BLESession(Base):
     teacher = relationship("User")
 
 
+class Enrollment(Base):
+    """Student subject enrollment mapping"""
+    __tablename__ = "enrollments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("students.id"), nullable=False)
+    subject_id = Column(Integer, ForeignKey("subjects.id"), nullable=False)
+    enrolled_at = Column(DateTime, default=datetime.datetime.utcnow)
+    status = Column(String(50), default="active")
+
+    student = relationship("Student")
+    subject = relationship("Subject")
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)

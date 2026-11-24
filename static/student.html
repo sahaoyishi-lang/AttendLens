@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>AttendLens — Student Portal & Proximity Check-In</title>
+  
+  <!-- PWA Meta Tags & Manifest -->
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#0f766e">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+
+  <!-- Tailwind CSS CDN (MIT) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0fdfa',
+              100: '#ccfbf1',
+              500: '#14b8a6',
+              600: '#0d9488',
+              700: '#0f766e',
+              800: '#115e59',
+              900: '#134e4a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Lucide Icons (ISC) -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    .pulse-beacon {
+      box-shadow: 0 0 0 0 rgba(13, 148, 136, 0.7);
+      animation: pulse-beacon-anim 2s infinite cubic-bezier(0.66, 0, 0, 1);
+    }
+    @keyframes pulse-beacon-anim {
+      to { box-shadow: 0 0 0 16px rgba(13, 148, 136, 0); }
+    }
+    .tab-active {
+      border-color: #0d9488 !important;
+      color: #0d9488 !important;
+      background-color: #f0fdfa;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans antialiased">
+
+  <!-- TOP MOBILE APP BAR -->
+  <header class="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-40 shadow-sm">
+    <div class="max-w-md mx-auto px-4 h-16 flex items-center justify-between">
+      
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-teal-500 to-emerald-400 flex items-center justify-center text-slate-950 font-black shadow-md shadow-teal-500/20 shrink-0">
+          <i data-lucide="scan" class="w-5 h-5 text-slate-950"></i>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <span class="text-base font-bold tracking-tight text-white">Attend<span class="text-teal-400">Lens</span></span>
+            <span class="px-2 py-0.5 text-[9px] font-bold bg-teal-900/80 text-teal-300 border border-teal-700/60 rounded-full">Student</span>
+          </div>
+          <p class="text-[11px] text-slate-400 truncate max-w-[210px]">DETS • Engineering & Tech Studies</p>
+        </div>
+      </div>
+
+      <!-- Optional PWA Install Button -->
+      <button id="pwa-install-btn" class="hidden flex items-center space-x-1 px-2.5 py-1 text-xs font-bold bg-teal-600 hover:bg-teal-500 text-white rounded-lg shadow-sm transition">
+        <i data-lucide="download" class="w-3.5 h-3.5"></i>
+        <span>Install App</span>
+      </button>
+
+    </div>
+  </header>
+
+  <!-- DEDICATED STUDENT NAVIGATION TABS -->
+  <nav class="bg-white border-b border-slate-200 sticky top-16 z-30 shadow-xs">
+    <div class="max-w-md mx-auto px-4 flex space-x-2 py-2">
+      <button onclick="switchStudentTab('checkin')" id="tab-btn-checkin" class="tab-btn tab-active flex-1 flex items-center justify-center space-x-2 py-2 text-xs font-bold rounded-lg border border-transparent transition">
+        <i data-lucide="radio" class="w-4 h-4"></i>
+        <span>Proximity Check-In</span>
+      </button>
+      <button onclick="switchStudentTab('enroll')" id="tab-btn-enroll" class="tab-btn flex-1 flex items-center justify-center space-x-2 py-2 text-xs font-bold rounded-lg border border-transparent transition text-slate-600 hover:text-teal-600">
+        <i data-lucide="user-plus" class="w-4 h-4"></i>
+        <span>Course Enrollment</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- MAIN VIEWPORT CONTAINER -->
+  <main class="flex-1 max-w-md w-full mx-auto px-4 py-5 space-y-5">
+
+    <!-- ========================================================= -->
+    <!-- TAB 1: PROXIMITY ATTENDANCE CHECK-IN -->
+    <!-- ========================================================= -->
+    <section id="student-view-checkin" class="space-y-4">
+      
+      <!-- Live Proximity Session Banner -->
+      <div id="session-banner" class="p-3.5 rounded-xl border flex items-center justify-between text-xs transition bg-amber-50 border-amber-200 text-amber-900">
+        <div class="flex items-center space-x-2.5">
+          <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse shrink-0"></span>
+          <div>
+            <span id="banner-title" class="font-bold block">Checking Classroom Beacon...</span>
+            <span id="banner-subtitle" class="text-[11px] text-amber-700 block mt-0.5">Looking for active proximity window</span>
+          </div>
+        </div>
+        <span id="banner-timer" class="font-mono font-bold text-xs bg-white/80 px-2 py-1 rounded border border-amber-300">--:--</span>
+      </div>
+
+      <!-- Main Check-In Card -->
+      <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase mb-1.5 flex items-center justify-between">
+            <span>Student Roll Number</span>
+            <button type="button" onclick="toggleCustomRollInput()" class="text-[10px] text-teal-600 font-bold hover:underline lowercase">
+              [toggle custom input]
+            </button>
+          </label>
+          
+          <!-- Fast Synthetic Roster Dropdown for 1-Tap Demo -->
+          <select id="student-roll-select" class="w-full text-xs font-semibold bg-slate-50 border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-teal-500">
+            <!-- Dynamically populated from API -->
+            <option value="DETS-26-EIE-001">DETS-26-EIE-001 — Aarav S. Patel</option>
+          </select>
+
+          <!-- Alternative Custom Roll Number Input -->
+          <input type="text" id="student-roll-custom" placeholder="e.g. DETS-26-EIE-021" class="hidden w-full text-xs font-semibold uppercase bg-slate-50 border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-teal-500">
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase mb-1.5 flex items-center justify-between">
+            <span>4-Digit Classroom PIN</span>
+            <span class="text-[10px] font-normal text-slate-400">Displayed on teacher screen</span>
+          </label>
+          <input type="text" id="student-pin-input" inputmode="numeric" maxlength="4" placeholder="••••" class="w-full text-center tracking-[0.5em] text-2xl font-mono font-bold bg-slate-50 border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-teal-500">
+        </div>
+
+        <!-- Optional Bluetooth Beacon Scan Button -->
+        <button type="button" onclick="scanBluetoothBeacon()" class="w-full flex items-center justify-center space-x-2 px-3 py-2 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-200 transition">
+          <i data-lucide="bluetooth" class="w-4 h-4 text-teal-600"></i>
+          <span>Scan Classroom Beacon (Web Bluetooth)</span>
+        </button>
+        <p id="bt-status" class="hidden text-[10px] text-center text-slate-500"></p>
+
+        <!-- Submit Button -->
+        <button id="submit-checkin-btn" onclick="submitAttendanceCheckin()" class="w-full flex items-center justify-center space-x-2 px-4 py-3 text-xs sm:text-sm font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-xl shadow-md shadow-teal-600/20 transition active:scale-[0.99]">
+          <i data-lucide="check-circle" class="w-4 h-4"></i>
+          <span>Mark My Attendance Now</span>
+        </button>
+
+      </div>
+
+      <!-- Instant Green Confirmation Receipt -->
+      <div id="checkin-receipt" class="hidden bg-gradient-to-b from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl p-5 shadow-xs space-y-4">
+        
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-sm">
+            <i data-lucide="check" class="w-6 h-6 stroke-[3]"></i>
+          </div>
+          <div>
+            <span class="text-xs font-bold uppercase tracking-wider text-emerald-800 block">Attendance Verified!</span>
+            <span class="text-[11px] text-emerald-700 block" id="receipt-message">Your attendance has been recorded.</span>
+          </div>
+        </div>
+
+        <hr class="border-emerald-200/60">
+
+        <div class="grid grid-cols-2 gap-3 text-xs">
+          <div>
+            <span class="text-[10px] font-bold text-emerald-800 uppercase block">Student Name</span>
+            <span id="receipt-name" class="font-bold text-slate-900 block truncate">—</span>
+          </div>
+          <div>
+            <span class="text-[10px] font-bold text-emerald-800 uppercase block">Roll Number</span>
+            <span id="receipt-roll" class="font-mono font-bold text-slate-900 block">—</span>
+          </div>
+          <div>
+            <span class="text-[10px] font-bold text-emerald-800 uppercase block">Subject / Course</span>
+            <span id="receipt-subject" class="font-semibold text-slate-800 block truncate">—</span>
+          </div>
+          <div>
+            <span class="text-[10px] font-bold text-emerald-800 uppercase block">Verified Timestamp</span>
+            <span id="receipt-time" class="font-mono text-slate-700 block">—</span>
+          </div>
+        </div>
+
+        <div class="bg-white/80 p-3 rounded-xl border border-emerald-200 flex items-center justify-between">
+          <div>
+            <span class="text-[10px] font-bold text-slate-500 uppercase block">Updated Attendance Rate</span>
+            <span id="receipt-pct" class="text-lg font-black text-emerald-600">--%</span>
+          </div>
+          <span class="px-2.5 py-1 text-[10px] font-bold bg-emerald-100 text-emerald-800 rounded-full border border-emerald-300">
+            ✓ Safe (&ge;75%)
+          </span>
+        </div>
+
+        <div class="text-[10px] text-slate-400 font-mono text-center" id="receipt-token">
+          Session ID: SESS-BLE-XXXX
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ========================================================= -->
+    <!-- TAB 2: STUDENT COURSE SELF-ENROLLMENT -->
+    <!-- ========================================================= -->
+    <section id="student-view-enroll" class="hidden space-y-4">
+      
+      <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        
+        <div class="flex items-center space-x-3 pb-3 border-b border-slate-100">
+          <div class="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center shrink-0">
+            <i data-lucide="book-open" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h2 class="text-sm font-bold text-slate-900">Student Course Self-Enrollment</h2>
+            <p class="text-[11px] text-slate-500">Register your personal details to enroll in any DETS course unit.</p>
+          </div>
+        </div>
+
+        <form id="enrollment-form" onsubmit="handleEnrollmentSubmit(event)" class="space-y-3.5">
+          
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Full Name</label>
+            <input type="text" id="enroll-name" required placeholder="e.g. Priya Sharma" class="w-full text-xs font-semibold bg-slate-50 border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-teal-500">
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Roll Number</label>
+              <input type="text" id="enroll-roll" required placeholder="DETS-26-EIE-021" class="w-full text-xs font-semibold uppercase bg-slate-50 border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-teal-500">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Semester</label>
+              <input type="text" id="enroll-semester" value="Semester 6" class="w-full text-xs font-medium bg-slate-100 border border-slate-300 rounded-xl p-3" readonly>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Institutional Email</label>
+            <input type="email" id="enroll-email" required placeholder="student.name@dets.edu" class="w-full text-xs font-semibold bg-slate-50 border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-teal-500">
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Select Course / Class</label>
+            <select id="enroll-subject-select" required class="w-full text-xs font-semibold bg-slate-50 border border-slate-300 rounded-xl p-3 focus:ring-2 focus:ring-teal-500">
+              <!-- Dynamically populated from /api/admin/subjects -->
+            </select>
+          </div>
+
+          <button type="submit" id="enroll-submit-btn" class="w-full flex items-center justify-center space-x-2 px-4 py-3 text-xs sm:text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-xl shadow-md transition active:scale-[0.99]">
+            <i data-lucide="user-check" class="w-4 h-4 text-teal-400"></i>
+            <span>Complete Class Enrollment</span>
+          </button>
+
+        </form>
+
+      </div>
+
+      <!-- Enrollment Confirmation Card -->
+      <div id="enroll-success-card" class="hidden bg-emerald-50 border border-emerald-200 rounded-2xl p-5 shadow-xs space-y-3">
+        <div class="flex items-center space-x-3">
+          <div class="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
+            <i data-lucide="check" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <span class="text-xs font-bold text-emerald-900 block" id="enroll-success-title">Enrollment Confirmed!</span>
+            <span class="text-[11px] text-emerald-700 block" id="enroll-success-msg">Your student profile is now registered.</span>
+          </div>
+        </div>
+        <p class="text-xs text-slate-600 bg-white/80 p-3 rounded-xl border border-emerald-200/80">
+          You are now enrolled in the attendance roster. You can immediately participate in proximity check-ins and will appear on official printable sheets!
+        </p>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- TOAST NOTIFICATION CONTAINER -->
+  <div id="toast-container" class="fixed bottom-4 left-4 right-4 z-50 space-y-2 pointer-events-none max-w-md mx-auto"></div>
+
+  <!-- Client-Side Student Portal Logic -->
+  <script>
+    let activeSession = null;
+    let pollInterval = null;
+    let deferredPrompt = null;
+
+    // Register Service Worker for PWA
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/static/sw.js').catch(err => {
+          console.warn('Service worker registration failed:', err);
+        });
+      });
+    }
+
+    // PWA Install prompt listener
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      const installBtn = document.getElementById('pwa-install-btn');
+      if (installBtn) {
+        installBtn.classList.remove('hidden');
+        installBtn.onclick = async () => {
+          installBtn.classList.add('hidden');
+          deferredPrompt.prompt();
+          await deferredPrompt.userChoice;
+          deferredPrompt = null;
+        };
+      }
+    });
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      if (window.lucide) lucide.createIcons();
+      await loadStudentRoster();
+      await loadEnrollmentSubjects();
+      await checkActiveProximitySession();
+
+      // Poll active session every 3 seconds
+      pollInterval = setInterval(checkActiveProximitySession, 3000);
+    });
+
+    function switchStudentTab(tabId) {
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('tab-active');
+        btn.classList.add('text-slate-600');
+      });
+
+      const activeBtn = document.getElementById(`tab-btn-${tabId}`);
+      if (activeBtn) {
+        activeBtn.classList.add('tab-active');
+        activeBtn.classList.remove('text-slate-600');
+      }
+
+      document.getElementById('student-view-checkin').classList.add('hidden');
+      document.getElementById('student-view-enroll').classList.add('hidden');
+
+      const target = document.getElementById(`student-view-${tabId}`);
+      if (target) target.classList.remove('hidden');
+
+      if (window.lucide) lucide.createIcons();
+    }
+
+    function toggleCustomRollInput() {
+      const select = document.getElementById('student-roll-select');
+      const custom = document.getElementById('student-roll-custom');
+      if (select.classList.contains('hidden')) {
+        select.classList.remove('hidden');
+        custom.classList.add('hidden');
+      } else {
+        select.classList.add('hidden');
+        custom.classList.remove('hidden');
+        custom.focus();
+      }
+    }
+
+    async function loadStudentRoster() {
+      try {
+        const res = await fetch('/api/admin/students');
+        if (!res.ok) return;
+        const students = await res.json();
+        const sel = document.getElementById('student-roll-select');
+        if (!sel) return;
+
+        sel.innerHTML = '';
+        students.forEach(s => {
+          const opt = document.createElement('option');
+          opt.value = s.roll_number;
+          opt.textContent = `${s.roll_number} — ${s.full_name}`;
+          sel.appendChild(opt);
+        });
+      } catch (e) {
+        console.error('Failed to load students:', e);
+      }
+    }
+
+    async function loadEnrollmentSubjects() {
+      try {
+        const res = await fetch('/api/admin/subjects');
+        if (!res.ok) return;
+        const subjects = await res.json();
+        const sel = document.getElementById('enroll-subject-select');
+        if (!sel) return;
+
+        sel.innerHTML = '';
+        subjects.forEach(s => {
+          const opt = document.createElement('option');
+          opt.value = s.id;
+          opt.textContent = `${s.code}: ${s.name} (Min ${s.min_threshold}%)`;
+          sel.appendChild(opt);
+        });
+      } catch (e) {
+        console.error('Failed to load enrollment subjects:', e);
+      }
+    }
+
+    async function checkActiveProximitySession() {
+      try {
+        const res = await fetch('/api/ble/active-session');
+        if (!res.ok) return;
+        const data = await res.json();
+        activeSession = data;
+
+        const banner = document.getElementById('session-banner');
+        const title = document.getElementById('banner-title');
+        const subtitle = document.getElementById('banner-subtitle');
+        const timer = document.getElementById('banner-timer');
+
+        if (data.active) {
+          banner.className = 'p-3.5 rounded-xl border flex items-center justify-between text-xs transition bg-emerald-50 border-emerald-200 text-emerald-900';
+          title.textContent = `● Class in Session: ${data.subject_name}`;
+          subtitle.textContent = `${data.total_checked_in} student(s) checked in`;
+          
+          const mins = Math.floor(data.remaining_seconds / 60);
+          const secs = data.remaining_seconds % 60;
+          timer.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+          timer.className = 'font-mono font-bold text-xs bg-emerald-100 text-emerald-900 px-2 py-1 rounded border border-emerald-300';
+        } else {
+          banner.className = 'p-3.5 rounded-xl border flex items-center justify-between text-xs transition bg-amber-50 border-amber-200 text-amber-900';
+          title.textContent = '⏳ Waiting for Instructor';
+          subtitle.textContent = 'Proximity check-in window is not active right now.';
+          timer.textContent = '--:--';
+          timer.className = 'font-mono font-bold text-xs bg-white/80 text-amber-800 px-2 py-1 rounded border border-amber-300';
+        }
+      } catch (e) {
+        console.error('Active session check failed:', e);
+      }
+    }
+
+    async function scanBluetoothBeacon() {
+      const statusEl = document.getElementById('bt-status');
+      statusEl.classList.remove('hidden');
+
+      if (!navigator.bluetooth) {
+        statusEl.textContent = 'ℹ️ Web Bluetooth requires HTTPS or localhost. Please enter the 4-digit PIN manually.';
+        showToast('Web Bluetooth unavailable over plain HTTP. Use 4-digit PIN.', 'info');
+        return;
+      }
+
+      try {
+        statusEl.textContent = 'Searching for nearby DETS Bluetooth classroom beacons...';
+        const device = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true
+        });
+        statusEl.textContent = `Connected to beacon: ${device.name || 'DETS Classroom Beacon'}`;
+        showToast(`Connected to ${device.name || 'Classroom Beacon'}!`, 'success');
+      } catch (err) {
+        statusEl.textContent = 'Bluetooth scan cancelled. Enter the 4-digit PIN directly.';
+      }
+    }
+
+    async function submitAttendanceCheckin() {
+      const pin = document.getElementById('student-pin-input').value.trim();
+      
+      let roll = '';
+      const customInput = document.getElementById('student-roll-custom');
+      if (!customInput.classList.contains('hidden') && customInput.value.trim()) {
+        roll = customInput.value.trim().toUpperCase();
+      } else {
+        roll = document.getElementById('student-roll-select').value;
+      }
+
+      if (!pin) {
+        showToast('Please enter the 4-digit PIN code.', 'error');
+        document.getElementById('student-pin-input').focus();
+        return;
+      }
+
+      if (!roll) {
+        showToast('Please select or enter your Roll Number.', 'error');
+        return;
+      }
+
+      const btn = document.getElementById('submit-checkin-btn');
+      btn.disabled = true;
+      btn.innerHTML = 'Verifying Attendance...';
+
+      try {
+        const res = await fetch('/api/ble/checkin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin_code: pin, roll_number: roll })
+        });
+
+        const data = await res.json();
+        if (data.success) {
+          showToast(data.message, 'success');
+          
+          // Render receipt
+          const receipt = document.getElementById('checkin-receipt');
+          receipt.classList.remove('hidden');
+
+          document.getElementById('receipt-name').textContent = data.student_name || roll;
+          document.getElementById('receipt-roll').textContent = data.roll_number || roll;
+          document.getElementById('receipt-subject').textContent = data.subject_name || (activeSession ? activeSession.subject_name : 'Class Session');
+          document.getElementById('receipt-time').textContent = data.timestamp || new Date().toLocaleTimeString();
+          document.getElementById('receipt-token').textContent = `Session ID: ${data.session_token || 'SESS-BLE'}`;
+          document.getElementById('receipt-pct').textContent = `${data.attendance_percent || 90.0}%`;
+
+          // Clear PIN input
+          document.getElementById('student-pin-input').value = '';
+          receipt.scrollIntoView({ behavior: 'smooth' });
+        } else {
+          showToast(data.message, 'error');
+        }
+      } catch (err) {
+        showToast('Check-in failed: ' + err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i data-lucide="check-circle" class="w-4 h-4"></i><span>Mark My Attendance Now</span>';
+        if (window.lucide) lucide.createIcons();
+      }
+    }
+
+    async function handleEnrollmentSubmit(e) {
+      e.preventDefault();
+      const name = document.getElementById('enroll-name').value.trim();
+      const roll = document.getElementById('enroll-roll').value.trim().toUpperCase();
+      const email = document.getElementById('enroll-email').value.trim();
+      const subjectId = parseInt(document.getElementById('enroll-subject-select').value);
+      const semester = document.getElementById('enroll-semester').value;
+
+      const submitBtn = document.getElementById('enroll-submit-btn');
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = 'Enrolling...';
+
+      try {
+        const res = await fetch('/api/student/enroll', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            full_name: name,
+            roll_number: roll,
+            email: email,
+            subject_id: subjectId,
+            semester: semester
+          })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+          showToast(data.message, 'success');
+          
+          const card = document.getElementById('enroll-success-card');
+          card.classList.remove('hidden');
+          document.getElementById('enroll-success-title').textContent = `Enrolled in ${data.subject.code}!`;
+          document.getElementById('enroll-success-msg').textContent = `${data.student.full_name} (${data.student.roll_number}) successfully registered.`;
+
+          // Refresh student roster dropdown
+          await loadStudentRoster();
+
+          // Reset form
+          document.getElementById('enrollment-form').reset();
+          document.getElementById('enroll-semester').value = 'Semester 6';
+          card.scrollIntoView({ behavior: 'smooth' });
+        } else {
+          showToast(data.detail || 'Enrollment failed.', 'error');
+        }
+      } catch (err) {
+        showToast('Enrollment error: ' + err.message, 'error');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i data-lucide="user-check" class="w-4 h-4 text-teal-400"></i><span>Complete Class Enrollment</span>';
+        if (window.lucide) lucide.createIcons();
+      }
+    }
+
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      if (!container) return;
+
+      const toast = document.createElement('div');
+      toast.className = `pointer-events-auto px-4 py-3 rounded-xl shadow-lg border text-xs font-semibold flex items-center space-x-2 transition-all duration-300 transform translate-y-2 opacity-0 ${
+        type === 'success' 
+          ? 'bg-slate-900 text-emerald-400 border-emerald-500/30' 
+          : type === 'error' 
+          ? 'bg-slate-900 text-rose-400 border-rose-500/30' 
+          : 'bg-slate-900 text-teal-300 border-teal-500/30'
+      }`;
+
+      const iconName = type === 'success' ? 'check-circle' : type === 'error' ? 'alert-circle' : 'info';
+      toast.innerHTML = `<i data-lucide="${iconName}" class="w-4 h-4 shrink-0"></i><span>${message}</span>`;
+      container.appendChild(toast);
+
+      if (window.lucide) lucide.createIcons();
+
+      setTimeout(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      }, 10);
+
+      setTimeout(() => {
+        toast.classList.add('translate-y-2', 'opacity-0');
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    }
+  </script>
+</body>
+</html>

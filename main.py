@@ -10,6 +10,9 @@ import csv
 import uuid
 import random
 import datetime
+import base64
+import socket
+import qrcode
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
@@ -28,7 +31,7 @@ import numpy as np
 from database import (
     engine, get_db, init_db, User, InstitutionConfig,
     Department, Subject, Student, ClassSession,
-    AttendanceRecord, AuditLog, BLESession
+    AttendanceRecord, AuditLog, BLESession, Enrollment
 )
 from models import (
     UserLogin, UserRegister, UserResponse, TokenResponse,
@@ -38,7 +41,8 @@ from models import (
     SheetScanResponse, AttendanceCommitRequest, AuditLogResponse,
     BLEStartRequest, BLESessionResponse, BLEStudentCheckinRequest,
     BLECheckinResult, BLEStatusResponse, DashboardKPIs,
-    SubjectAnalyticsSummary, StudentAnalyticsItem
+    SubjectAnalyticsSummary, StudentAnalyticsItem,
+    StudentEnrollRequest, StudentEnrollResponse
 )
 from seed_data import seed_all, hash_pw, verify_pw
 from services.sheet_generator import (
@@ -118,6 +122,67 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 async def serve_index():
     with open("static/index.html", "r", encoding="utf-8") as f:
         return f.read()
+
+@app.get("/student", response_class=HTMLResponse)
+async def serve_student_portal():
+    if os.path.exists("static/student.html"):
+        with open("static/student.html", "r", encoding="utf-8") as f:
+            return f.read()
+    return HTMLResponse("<h3>Student portal template not found</h3>", status_code=404)
+
+def get_lan_ip() -> str:
+    """Detect active local LAN IPv4 address (e.g. 192.168.x.x, 10.x.x.x), fallback to 127.0.0.1"""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.5)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        if ip and not ip.startswith("127."):
+            return ip
+    except Exception:
+        pass
+
+    try:
+        hostname = socket.gethostname()
+        ip = socket.gethostbyname(hostname)
+        if ip and not ip.startswith("127."):
+            return ip
+    except Exception:
+        pass
+
+    return "127.0.0.1"
+
+@app.get("/api/network-info")
+def get_network_info(custom_url: Optional[str] = None):
+    """
+    Returns detected LAN IP, port, student check-in URL,
+    and a base64-encoded PNG QR code image for instant phone scanning over local hotspot/Wi-Fi.
+    """
+    lan_ip = get_lan_ip()
+    port = 8000
+    student_url = custom_url.strip() if custom_url and custom_url.strip() else f"http://{lan_ip}:{port}/student"
+
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=6,
+        border=2
+    )
+    qr.add_data(student_url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    qr_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+
+    return {
+        "lan_ip": lan_ip,
+        "port": port,
+        "student_url": student_url,
+        "qr_code_base64": f"data:image/png;base64,{qr_b64}"
+    }
 
 # -------------------------------------------------------------
 # AUTHENTICATION & RBAC ROUTES
@@ -641,9 +706,34 @@ def start_ble_session(
         "duration_seconds": payload.duration_minutes * 60
     }
 
+@app.get("/api/ble/active-session")
+def get_active_ble_session(db: Session = Depends(get_db)):
+    """Allows student mobile devices to detect if a proximity check-in window is open"""
+    now = datetime.datetime.utcnow()
+    active = db.query(BLESession).filter(
+        BLESession.is_active == True,
+        BLESession.expires_at > now
+    ).order_by(BLESession.created_at.desc()).first()
+
+    if not active:
+        return {"active": False, "message": "No active proximity session. Waiting for instructor..."}
+
+    remaining = max(0, int((active.expires_at - now).total_seconds()))
+    subj = db.query(Subject).filter_by(id=active.subject_id).first()
+    subj_name = f"{subj.code} - {subj.name}" if subj else "Class Session"
+
+    return {
+        "active": True,
+        "subject_id": active.subject_id,
+        "subject_name": subj_name,
+        "session_token": active.session_token,
+        "remaining_seconds": remaining,
+        "total_checked_in": len(active.checked_in_students or [])
+    }
+
 @app.post("/api/ble/checkin", response_model=BLECheckinResult)
 def ble_student_checkin(payload: BLEStudentCheckinRequest, db: Session = Depends(get_db)):
-    """Student Check-In Simulator: Submits PIN and synthetic roll number"""
+    """Student Check-In: Submits PIN and synthetic roll number, returns live receipt"""
     active_session = db.query(BLESession).filter(
         BLESession.pin_code == payload.pin_code.strip(),
         BLESession.is_active == True,
@@ -655,7 +745,24 @@ def ble_student_checkin(payload: BLEStudentCheckinRequest, db: Session = Depends
 
     student = db.query(Student).filter_by(roll_number=payload.roll_number.strip().upper()).first()
     if not student:
-        return {"success": False, "message": f"Roll number '{payload.roll_number}' not found in DETS student directory."}
+        return {"success": False, "message": f"Roll number '{payload.roll_number}' not found in DETS student directory. Please self-enroll first."}
+
+    # Fetch subject details
+    subj = db.query(Subject).filter_by(id=active_session.subject_id).first()
+    subj_name = f"{subj.code} - {subj.name}" if subj else "Course Session"
+    timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Calculate student attendance percentage
+    held_sessions = db.query(ClassSession).filter_by(subject_id=active_session.subject_id).count()
+    attended_records = db.query(AttendanceRecord).join(ClassSession).filter(
+        ClassSession.subject_id == active_session.subject_id,
+        AttendanceRecord.student_id == student.id,
+        AttendanceRecord.status == "P"
+    ).count()
+
+    total_held = max(1, held_sessions + 1)
+    total_att = attended_records + 1
+    att_pct = round((total_att / total_held) * 100.0, 1)
 
     checked_in = list(active_session.checked_in_students or [])
     if student.roll_number in checked_in:
@@ -663,7 +770,11 @@ def ble_student_checkin(payload: BLEStudentCheckinRequest, db: Session = Depends
             "success": True,
             "message": f"Student '{student.full_name}' is already marked present in this session.",
             "student_name": student.full_name,
-            "roll_number": student.roll_number
+            "roll_number": student.roll_number,
+            "subject_name": subj_name,
+            "session_token": active_session.session_token,
+            "timestamp": timestamp_str,
+            "attendance_percent": att_pct
         }
 
     checked_in.append(student.roll_number)
@@ -674,7 +785,80 @@ def ble_student_checkin(payload: BLEStudentCheckinRequest, db: Session = Depends
         "success": True,
         "message": f"Proximity check-in verified! {student.full_name} marked present.",
         "student_name": student.full_name,
-        "roll_number": student.roll_number
+        "roll_number": student.roll_number,
+        "subject_name": subj_name,
+        "session_token": active_session.session_token,
+        "timestamp": timestamp_str,
+        "attendance_percent": att_pct
+    }
+
+@app.post("/api/student/enroll", response_model=StudentEnrollResponse)
+def student_self_enroll(payload: StudentEnrollRequest, db: Session = Depends(get_db)):
+    """
+    Enables students to enroll themselves with their personal details
+    (Name, Roll Number, Email, Dept, Semester) into any particular class/subject.
+    """
+    roll = payload.roll_number.strip().upper()
+    full_name = payload.full_name.strip()
+    email = payload.email.strip().lower()
+
+    if not roll or not full_name or not email:
+        raise HTTPException(status_code=400, detail="Full name, roll number, and email are required.")
+
+    # 1. Verify subject exists
+    subject = db.query(Subject).filter_by(id=payload.subject_id).first()
+    if not subject:
+        raise HTTPException(status_code=404, detail="Selected course/subject does not exist.")
+
+    # 2. Find or create Student record
+    student = db.query(Student).filter_by(roll_number=roll).first()
+    if not student:
+        student = Student(
+            roll_number=roll,
+            full_name=full_name,
+            email=email,
+            department_id=payload.department_id or subject.department_id,
+            semester=payload.semester or subject.semester,
+            academic_year=payload.academic_year or subject.academic_year,
+            is_active=True
+        )
+        db.add(student)
+        db.commit()
+        db.refresh(student)
+    else:
+        student.full_name = full_name
+        student.email = email
+        student.is_active = True
+        db.commit()
+        db.refresh(student)
+
+    # 3. Create enrollment mapping if not present
+    enrollment = db.query(Enrollment).filter_by(student_id=student.id, subject_id=subject.id).first()
+    if not enrollment:
+        enrollment = Enrollment(
+            student_id=student.id,
+            subject_id=subject.id,
+            status="active"
+        )
+        db.add(enrollment)
+        db.commit()
+
+    return {
+        "success": True,
+        "message": f"Successfully enrolled {student.full_name} ({student.roll_number}) in {subject.code}: {subject.name}!",
+        "student": {
+            "id": student.id,
+            "roll_number": student.roll_number,
+            "full_name": student.full_name,
+            "email": student.email,
+            "semester": student.semester
+        },
+        "subject": {
+            "id": subject.id,
+            "code": subject.code,
+            "name": subject.name,
+            "min_threshold": subject.min_threshold
+        }
     }
 
 @app.get("/api/ble/session/{session_token}/status", response_model=BLEStatusResponse)

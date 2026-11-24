@@ -201,6 +201,10 @@ class BLECheckinResult(BaseModel):
     message: str
     student_name: Optional[str] = None
     roll_number: Optional[str] = None
+    subject_name: Optional[str] = None
+    session_token: Optional[str] = None
+    timestamp: Optional[str] = None
+    attendance_percent: Optional[float] = None
 
 class BLEStatusResponse(BaseModel):
     session_token: str
@@ -240,3 +244,20 @@ class DashboardKPIs(BaseModel):
     overall_attendance_rate: float
     total_students_shortage: int
     subject_summaries: List[Dict[str, Any]]
+
+# ----------------- STUDENT SELF-ENROLLMENT -----------------
+
+class StudentEnrollRequest(BaseModel):
+    full_name: str
+    roll_number: str
+    email: str
+    department_id: Optional[int] = 1
+    subject_id: int
+    semester: Optional[str] = "Semester 6"
+    academic_year: Optional[str] = "2026-2027"
+
+class StudentEnrollResponse(BaseModel):
+    success: bool
+    message: str
+    student: Dict[str, Any]
+    subject: Dict[str, Any]

@@ -92,13 +92,19 @@ pip install -r requirements.txt
 
 ### 3. Run Application
 ```bash
-python main.py
-# Or on Windows using Python Launcher:
+# Double click run.bat or run:
+run.bat
+
+# Or from PowerShell / CMD inside the project folder:
+cd C:\ide_project\DETS
 py main.py
+
 # Or using Uvicorn directly:
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
-Open your browser at: **`http://localhost:8000`**
+- Open Admin & Teacher Dashboard at: **`http://localhost:8000`**
+- Open Dedicated Mobile Student Portal at: **`http://localhost:8000/student`**
+- Connect Mobile Phones over LAN / Hotspot: Scan the QR code shown in the teacher's **"Hands-Free BLE Check-In"** tab or visit `http://<your-lan-ip>:8000/student`.
 
 ---
 
@@ -131,7 +137,7 @@ AttendLens comes pre-seeded with synthetic institutional data, 20 anonymized stu
 - **Formatted XLSX Sheet:** Excel attendance template with institutional formatting.
 
 ### 4. Sheet Upload, Hybrid OCR & Split-Screen Verification
-- **Multiple Ingestion Modes:** Local PNG/JPEG/PDF upload, live webcam snap (`getUserMedia`), or the **1-Click "⚡ Generate Sample Filled Sheet Image"** button.
+- **Multiple Ingestion Modes:** Local PNG/JPEG/PDF upload, live webcam snap (`getUserMedia`), mobile rear camera capture (`capture="environment"`), or the **1-Click "⚡ Generate Sample Filled Sheet Image"** button.
 - **OpenCV Vision Engine:**
   - Detects corner fiducials and applies perspective deskewing to a canonical $1200 \times 1700$ grid.
   - Decodes header QR code to auto-populate class metadata.
@@ -142,11 +148,16 @@ AttendLens comes pre-seeded with synthetic institutional data, 20 anonymized stu
   - Right: Interactive table displaying student details, zoomed-in cell crops, OCR confidence badges, and 1-click override buttons (`[P]` / `[A]`).
   - Commits verified records and logs every manual override into an `AuditLog` database table.
 
-### 5. Hands-Free BLE / Proximity Digital Check-In
+### 5. Hands-Free BLE / Proximity Digital Check-In & Live Mobile Stream
 - Teacher initiates a 2-minute proximity check-in window generating a rotating 4-digit PIN code and session token.
-- **Student Check-In Simulator:** Allows entering the active PIN for any synthetic student roll number to observe real-time attendance verification into the unified database.
+- **Live Student Mobile Connect:** Auto-detects host machine's LAN IP, renders scannable QR code on the teacher dashboard, supports custom HTTPS tunnel URLs, and streams live student check-ins every 3 seconds.
 
-### 6. Attendance Analytics & Shortage Reports
+### 6. Mobile Student Portal & Course Self-Enrollment (`/student`)
+- **Proximity Check-In:** Dedicated mobile UI where students enter the active 4-digit session PIN to mark attendance and immediately receive a green digital attendance receipt with their updated attendance percentage.
+- **Course Self-Enrollment:** Enables any student to enroll with their personal details (Full Name, Roll Number, Email, Department, and Semester) into any active class or subject (`POST /api/student/enroll`), immediately adding them to the institutional roster and printable sheets.
+- **Installable Progressive Web App (PWA):** Equipped with `manifest.json`, offline service worker caching (`sw.js`), and desktop/mobile "Install App" support.
+
+### 7. Attendance Analytics & Shortage Reports
 - **Real-Time KPIs:** Classes Held, Enrolled Students, Average Attendance Rate, and Shortage Defaulters count.
 - **Visualizations:** Chart.js Bar Chart for subject comparison and Doughnut Chart for threshold distribution.
 - **75% Recovery Calculator:** Evaluates the exact formula:
