@@ -11,7 +11,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./attendlens.db")
+DEFAULT_DB = "sqlite:////tmp/attendlens.db" if os.getenv("VERCEL") else "sqlite:///./attendlens.db"
+DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_DB)
 
 # For SQLite, check_same_thread needs to be False for multithreaded FastAPI requests
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
