@@ -156,18 +156,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+
 # Mount static files
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
-    with open("static/index.html", "r", encoding="utf-8") as f:
+    index_file = os.path.join(STATIC_DIR, "index.html")
+    with open(index_file, "r", encoding="utf-8") as f:
         return f.read()
 
 @app.get("/student", response_class=HTMLResponse)
 async def serve_student_portal():
-    if os.path.exists("static/student.html"):
-        with open("static/student.html", "r", encoding="utf-8") as f:
+    student_file = os.path.join(STATIC_DIR, "student.html")
+    if os.path.exists(student_file):
+        with open(student_file, "r", encoding="utf-8") as f:
             return f.read()
     return HTMLResponse("<h3>Student portal template not found</h3>", status_code=404)
 

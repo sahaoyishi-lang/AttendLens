@@ -12,7 +12,11 @@ from sqlalchemy import (
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 
 DEFAULT_DB = "sqlite:////tmp/attendlens.db" if os.getenv("VERCEL") else "sqlite:///./attendlens.db"
-DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_DB)
+DATABASE_URL = os.getenv("POSTGRES_URL") or os.getenv("DATABASE_URL") or DEFAULT_DB
+
+# Fix dialect prefix for SQLAlchemy if database URL begins with postgres://
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 # For SQLite, check_same_thread needs to be False for multithreaded FastAPI requests
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
