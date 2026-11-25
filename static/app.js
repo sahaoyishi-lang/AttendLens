@@ -99,6 +99,7 @@ function switchTab(tabId) {
     loadInstitutionConfig();
   } else if (tabId === "ble") {
     fetchNetworkInfo();
+    restoreActiveBLESession();
   }
 }
 
@@ -679,6 +680,31 @@ async function populateBLEStudentSelect() {
     });
   } catch (e) {
     console.error("BLE student select population failed:", e);
+  }
+}
+
+async function restoreActiveBLESession() {
+  if (activeBleToken) {
+    await pollBLEStatus();
+    return;
+  }
+  try {
+    const res = await fetch("/api/ble/teacher-active-session");
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.active) return;
+
+    activeBleToken = data.session_token;
+    document.getElementById("ble-pin-display").textContent = data.pin_code;
+    document.getElementById("ble-pin-input").value = data.pin_code;
+    document.getElementById("ble-active-panel").classList.remove("hidden");
+    document.getElementById("ble-start-btn").classList.add("hidden");
+    document.getElementById("ble-close-btn").classList.remove("hidden");
+
+    startBLETimer(data.remaining_seconds);
+    await pollBLEStatus();
+  } catch (e) {
+    console.error("Failed to restore active BLE session:", e);
   }
 }
 

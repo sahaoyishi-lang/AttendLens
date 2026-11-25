@@ -772,6 +772,31 @@ def get_active_ble_session(db: Session = Depends(get_db)):
         "total_checked_in": len(active.checked_in_students or [])
     }
 
+@app.get("/api/ble/teacher-active-session")
+def get_teacher_active_ble_session(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Restores active BLE session details (including PIN) for the teacher UI after refresh"""
+    now = datetime.datetime.utcnow()
+    active = db.query(BLESession).filter(
+        BLESession.is_active == True,
+        BLESession.expires_at > now
+    ).order_by(BLESession.created_at.desc()).first()
+
+    if not active:
+        return {"active": False}
+
+    remaining = max(0, int((active.expires_at - now).total_seconds()))
+    return {
+        "active": True,
+        "session_token": active.session_token,
+        "subject_id": active.subject_id,
+        "pin_code": active.pin_code,
+        "remaining_seconds": remaining,
+        "total_checked_in": len(active.checked_in_students or [])
+    }
+
 @app.post("/api/ble/checkin", response_model=BLECheckinResult)
 def ble_student_checkin(payload: BLEStudentCheckinRequest, db: Session = Depends(get_db)):
     """Student Check-In: Submits PIN and synthetic roll number, returns live receipt"""
