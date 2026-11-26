@@ -18,31 +18,32 @@ def run_tests():
 
     # 1. Test Database Initialization & Seeding
     print("[1/5] Testing Database Initialization & Synthetic Seeder...")
-    from database import init_db, SessionLocal, User, Subject, Student, ClassSession, AttendanceRecord
+    from database import init_db, SessionLocal, User, Department, Subject, Student, ClassSession, AttendanceRecord
     init_db()
     db = SessionLocal()
     from seed_data import seed_all
     seed_all(db)
 
     users_count = db.query(User).count()
+    depts_count = db.query(Department).count()
     students_count = db.query(Student).count()
     subjects_count = db.query(Subject).count()
     sessions_count = db.query(ClassSession).count()
     records_count = db.query(AttendanceRecord).count()
 
     print(f"  ✓ Users in DB: {users_count}")
+    print(f"  ✓ Streams/Departments in DB: {depts_count}")
     print(f"  ✓ Students in DB: {students_count}")
     print(f"  ✓ Subjects in DB: {subjects_count}")
     print(f"  ✓ Historical Sessions: {sessions_count}")
     print(f"  ✓ Attendance Records: {records_count}")
-    assert students_count >= 20, "Expected at least 20 synthetic students"
-    assert sessions_count >= 12, "Expected at least 12 historical sessions"
+    assert depts_count >= 3, "Expected 3 streams (EIE, ECE, IT)"
+    assert subjects_count >= 9, "Expected 9 stream subjects"
 
     # 2. Test Smart Sheet Generator (PDF & XLSX)
     print("\n[2/5] Testing Smart PDF & XLSX Sheet Generator...")
     from services.sheet_generator import generate_smart_pdf_sheet, generate_attendance_xlsx_template
-    students = db.query(Student).all()
-    stud_data = [{"roll_number": s.roll_number, "full_name": s.full_name} for s in students]
+    stud_data = [{"id": i, "roll_number": f"DETS-26-EIE-{i:03d}", "full_name": f"Test Student {i}"} for i in range(1, 21)]
 
     pdf_bytes = generate_smart_pdf_sheet(
         institution_name="Department of Engineering & Technological Studies (DETS)",
@@ -77,7 +78,7 @@ def run_tests():
         bgr_to_base64_jpeg
     )
     sample_bgr = generate_synthetic_sample_sheet_image(
-        students=[{"id": s.id, "roll_number": s.roll_number, "full_name": s.full_name} for s in students],
+        students=stud_data,
         subject_code="EIE-301",
         subject_name="Industrial Instrumentation & Transducers",
         session_date="2026-11-24",
@@ -87,7 +88,7 @@ def run_tests():
 
     scan_result = process_scanned_sheet(
         image_bgr=sample_bgr,
-        students=[{"id": s.id, "roll_number": s.roll_number, "full_name": s.full_name} for s in students]
+        students=stud_data
     )
 
     print(f"  ✓ 4-Corner Fiducials Detected: {scan_result['fiducials_detected']}")
@@ -222,22 +223,32 @@ def run_tests():
     assert enroll_data["student"]["roll_number"] == "DETS-26-EIE-021"
     print(f"  ✓ POST /api/student/enroll registered student: {enroll_data['student']['full_name']} into {enroll_data['subject']['code']}")
 
-    # Test Student Account Creation / Sign Up with Registration Number and Custom Semester
-    signup_roll = f"DETS-26-EIE-0{random.randint(30, 99)}"
+    # Test Student Account Creation / Sign Up with Registration Number, Stream (ECE), and Google Auth Provider
+    signup_roll = f"DETS-26-ECE-0{random.randint(30, 99)}"
     res_signup = client.post("/api/student/signup", json={
         "roll_number": signup_roll,
         "full_name": "Kavita S. Murthy",
-        "email": f"kavita.{random.randint(100, 999)}@dets.edu",
+        "email": f"kavita.{random.randint(100, 999)}@gmail.com",
         "password": "Password@123",
-        "semester": "Semester 4"
+        "stream": "ECE",
+        "semester": "Semester 4",
+        "auth_provider": "google"
     })
     assert res_signup.status_code == 200
     signup_data = res_signup.json()
     assert signup_data["user"]["role"] == "student"
+    assert signup_data["user"]["auth_provider"] == "google"
     assert signup_data["student"]["roll_number"] == signup_roll
     assert signup_data["student"]["semester"] == "Semester 4"
     stud_token = signup_data["access_token"]
-    print(f"  ✓ POST /api/student/signup created student account for {signup_roll} ({signup_data['user']['full_name']}) in {signup_data['student']['semester']}")
+    print(f"  ✓ POST /api/student/signup created Google student account for {signup_roll} ({signup_data['user']['full_name']}) in ECE, {signup_data['student']['semester']}")
+
+    # Verify Stream filtering on teacher student directory
+    res_stream = client.get("/api/admin/students?stream=ECE")
+    assert res_stream.status_code == 200
+    ece_students = res_stream.json()
+    assert any(s["roll_number"] == signup_roll and s["department_code"] == "ECE" for s in ece_students)
+    print(f"  ✓ GET /api/admin/students?stream=ECE lists {signup_roll} under ECE stream")
 
     # Test Student Login using Registration Number
     res_login = client.post("/api/student/login", json={
@@ -259,12 +270,12 @@ def run_tests():
     assert "overall_attendance_rate" in me_data
     print(f"  ✓ GET /api/student/me retrieved profile: {me_data['full_name']} with {len(me_data['enrolled_subjects'])} subjects, overall rate: {me_data['overall_attendance_rate']}%")
 
-    # Test Student 1-Click Demo Login
-    res_demo = client.post("/api/student/demo-login/DETS-26-EIE-001")
+    # Test Student 1-Click Demo Login on registered student
+    res_demo = client.post("/api/student/demo-login/DETS-26-EIE-021")
     assert res_demo.status_code == 200
     demo_data = res_demo.json()
-    assert demo_data["student"]["roll_number"] == "DETS-26-EIE-001"
-    print(f"  ✓ POST /api/student/demo-login/DETS-26-EIE-001 authenticated demo student: {demo_data['user']['full_name']}")
+    assert demo_data["student"]["roll_number"] == "DETS-26-EIE-021"
+    print(f"  ✓ POST /api/student/demo-login/DETS-26-EIE-021 authenticated student: {demo_data['user']['full_name']}")
 
     # Test BLE Session Start & Student Check-In Receipt
     res_ble_start = client.post("/api/ble/start-session", json={"subject_id": 1, "duration_minutes": 2})

@@ -278,18 +278,98 @@ def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 @app.get("/api/auth/google/url")
-def google_sso_url(db: Session = Depends(get_db)):
-    """Provides Google OAuth2 redirect URL or mock SSO instructions"""
+def google_sso_url(request: Request, mode: str = "student", db: Session = Depends(get_db)):
+    """Provides Google OAuth2 redirect URL using dynamic origin"""
     cfg = db.query(InstitutionConfig).first()
-    if cfg and cfg.google_client_id:
+    client_id = os.getenv("GOOGLE_CLIENT_ID") or (cfg.google_client_id if cfg else "")
+    if client_id:
+        base_url = str(request.base_url).rstrip("/")
+        redirect_uri = f"{base_url}/api/auth/google/callback"
+        from urllib.parse import urlencode
+        params = urlencode({
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "response_type": "code",
+            "scope": "openid profile email",
+            "state": mode,
+            "prompt": "select_account",
+        })
         return {
             "configured": True,
-            "url": f"https://accounts.google.com/o/oauth2/v2/auth?client_id={cfg.google_client_id}&redirect_uri=http://localhost:8000/api/auth/google/callback&response_type=code&scope=openid%20profile%20email"
+            "url": f"https://accounts.google.com/o/oauth2/v2/auth?{params}"
         }
     return {
         "configured": False,
-        "message": "Google Client ID not configured. Use the 1-Click Demo Login bar or configure credentials in the Admin Master Data tab."
+        "message": "Google OAuth Client ID is not configured on the server yet. Use your Google (@gmail.com) email below to sign up."
     }
+
+@app.get("/api/auth/google/callback")
+def google_sso_callback(
+    request: Request,
+    code: Optional[str] = None,
+    error: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Handles Google OAuth2 callback and logs in or pre-fills student signup"""
+    from fastapi.responses import RedirectResponse
+    from urllib.parse import urlencode
+    import requests as http_requests
+
+    if error or not code:
+        return RedirectResponse(url="/student?google_error=cancelled")
+
+    cfg = db.query(InstitutionConfig).first()
+    client_id = os.getenv("GOOGLE_CLIENT_ID") or (cfg.google_client_id if cfg else "")
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET") or (cfg.google_client_secret if cfg else "")
+    if not client_id or not client_secret:
+        return RedirectResponse(url="/student?google_error=not_configured")
+
+    base_url = str(request.base_url).rstrip("/")
+    redirect_uri = f"{base_url}/api/auth/google/callback"
+
+    token_res = http_requests.post(
+        "https://oauth2.googleapis.com/token",
+        data={
+            "code": code,
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "redirect_uri": redirect_uri,
+            "grant_type": "authorization_code",
+        },
+        timeout=10,
+    )
+    if not token_res.ok:
+        return RedirectResponse(url="/student?google_error=token_exchange_failed")
+
+    access_token = token_res.json().get("access_token")
+    userinfo_res = http_requests.get(
+        "https://www.googleapis.com/oauth2/v3/userinfo",
+        headers={"Authorization": f"Bearer {access_token}"},
+        timeout=10,
+    )
+    if not userinfo_res.ok:
+        return RedirectResponse(url="/student?google_error=userinfo_failed")
+
+    info = userinfo_res.json()
+    g_email = (info.get("email") or "").strip().lower()
+    g_name = (info.get("name") or g_email.split("@")[0]).strip()
+    if not g_email:
+        return RedirectResponse(url="/student?google_error=no_email")
+
+    # If already registered, sign in immediately
+    existing_user = db.query(User).filter_by(email=g_email).first()
+    if existing_user and existing_user.role == "student":
+        jwt_token = create_access_token({
+            "sub": str(existing_user.id),
+            "role": "student",
+            "roll_number": existing_user.roll_number,
+            "email": g_email,
+            "student_id": existing_user.student_id,
+        })
+        return RedirectResponse(url=f"/student?token={jwt_token}")
+
+    qs = urlencode({"google_email": g_email, "google_name": g_name})
+    return RedirectResponse(url=f"/student?{qs}")
 
 # -------------------------------------------------------------
 # INSTITUTIONAL MASTER DATA ENGINE (ADMIN TAB)
@@ -355,8 +435,32 @@ def create_subject(payload: SubjectCreate, db: Session = Depends(get_db)):
     return subj
 
 @app.get("/api/admin/students", response_model=List[StudentResponse])
-def get_students(db: Session = Depends(get_db)):
-    return db.query(Student).all()
+def get_students(stream: Optional[str] = None, db: Session = Depends(get_db)):
+    depts = {d.id: d for d in db.query(Department).all()}
+    query = db.query(Student).filter_by(is_active=True)
+    if stream and stream.strip().upper() != "ALL":
+        dept = db.query(Department).filter_by(code=stream.strip().upper()).first()
+        if dept:
+            query = query.filter_by(department_id=dept.id)
+        else:
+            return []
+    students = query.order_by(Student.department_id, Student.roll_number).all()
+    result = []
+    for s in students:
+        d = depts.get(s.department_id)
+        result.append({
+            "id": s.id,
+            "roll_number": s.roll_number,
+            "full_name": s.full_name,
+            "email": s.email,
+            "department_id": s.department_id,
+            "department_code": d.code if d else "GEN",
+            "department_name": d.name if d else "General",
+            "semester": s.semester,
+            "academic_year": s.academic_year,
+            "is_active": s.is_active,
+        })
+    return result
 
 @app.post("/api/admin/students", response_model=StudentResponse)
 def create_student(payload: StudentCreate, db: Session = Depends(get_db)):
@@ -553,8 +657,10 @@ async def scan_attendance_sheet(
     if image_bgr is None:
         raise HTTPException(status_code=400, detail="No valid image provided for scanning")
 
-    students = db.query(Student).filter_by(is_active=True).all()
+    students = db.query(Student).filter_by(is_active=True, department_id=subject.department_id).all() if subject else db.query(Student).filter_by(is_active=True).all()
     students_data = [{"id": s.id, "roll_number": s.roll_number, "full_name": s.full_name} for s in students]
+    if not students_data:
+        students_data = [{"id": i, "roll_number": f"SAMPLE-{s_code}-{i:03d}", "full_name": f"Sample Entry {i}"} for i in range(1, 6)]
 
     scan_result = process_scanned_sheet(image_bgr, students_data)
 
@@ -596,8 +702,10 @@ def generate_sample_filled(
     s_date = session_date or datetime.date.today().strftime("%Y-%m-%d")
     s_token = f"SESS-{s_code}-{s_date.replace('-', '')}-{random.randint(100, 999)}"
 
-    students = db.query(Student).filter_by(is_active=True).all()
+    students = db.query(Student).filter_by(is_active=True, department_id=subject.department_id).all() if subject else db.query(Student).filter_by(is_active=True).all()
     students_data = [{"id": s.id, "roll_number": s.roll_number, "full_name": s.full_name} for s in students]
+    if not students_data:
+        students_data = [{"id": i, "roll_number": f"SAMPLE-{s_code}-{i:03d}", "full_name": f"Sample Entry {i}"} for i in range(1, 6)]
 
     # Generate synthetic realistic filled sheet image
     filled_bgr = generate_synthetic_sample_sheet_image(
@@ -948,13 +1056,26 @@ def student_signup(payload: StudentRegisterRequest, db: Session = Depends(get_db
     roll = payload.roll_number.strip().upper()
     full_name = payload.full_name.strip()
     email = payload.email.strip().lower()
-    password = payload.password.strip()
+    password = (payload.password or "").strip()
+    auth_provider = (payload.auth_provider or "google").strip().lower()
 
-    if not roll or not full_name or not email or not password:
-        raise HTTPException(status_code=400, detail="Registration number, full name, email, and password are required.")
+    if not roll or not full_name or not email:
+        raise HTTPException(status_code=400, detail="Registration number, full name, and Google email are required.")
 
-    if len(password) < 4:
+    if auth_provider == "google" and not password:
+        password = uuid.uuid4().hex
+    elif len(password) < 4:
         raise HTTPException(status_code=400, detail="Password must be at least 4 characters.")
+
+    # Resolve Stream / Department (EIE, ECE, IT)
+    dept = None
+    if payload.stream:
+        dept = db.query(Department).filter_by(code=payload.stream.strip().upper()).first()
+    if not dept and payload.department_id:
+        dept = db.query(Department).filter_by(id=payload.department_id).first()
+    if not dept:
+        dept = db.query(Department).first()
+    resolved_dept_id = dept.id if dept else 1
 
     # 1. Check if user account already exists with this email or roll_number
     existing_user_email = db.query(User).filter_by(email=email).first()
@@ -972,7 +1093,7 @@ def student_signup(payload: StudentRegisterRequest, db: Session = Depends(get_db
             roll_number=roll,
             full_name=full_name,
             email=email,
-            department_id=payload.department_id or 1,
+            department_id=resolved_dept_id,
             semester=payload.semester or "Semester 6",
             academic_year=payload.academic_year or "2026-2027",
             is_active=True
@@ -984,6 +1105,7 @@ def student_signup(payload: StudentRegisterRequest, db: Session = Depends(get_db
         # Update details if previously stubbed
         student.full_name = full_name
         student.email = email
+        student.department_id = resolved_dept_id
         if payload.semester:
             student.semester = payload.semester.strip()
         db.commit()
@@ -996,7 +1118,7 @@ def student_signup(payload: StudentRegisterRequest, db: Session = Depends(get_db
         role="student",
         roll_number=roll,
         student_id=student.id,
-        auth_provider="local",
+        auth_provider=auth_provider,
         is_active=True
     )
     db.add(user)
@@ -1404,7 +1526,8 @@ def get_subject_analytics(
     sess_ids = [s.id for s in sessions]
     total_sessions = len(sessions)
 
-    students = db.query(Student).filter_by(is_active=True).all()
+    dept_map = {d.id: d.code for d in db.query(Department).all()}
+    students = db.query(Student).filter_by(is_active=True, department_id=subject.department_id).order_by(Student.roll_number).all()
     student_items = []
     shortage_count = 0
     total_attended_all = 0
@@ -1429,6 +1552,7 @@ def get_subject_analytics(
             "student_id": s.id,
             "roll_number": s.roll_number,
             "full_name": s.full_name,
+            "department_code": dept_map.get(s.department_id, "GEN"),
             "classes_held": total_sessions,
             "classes_attended": attended,
             "attendance_percent": pct,

@@ -277,6 +277,22 @@ function renderAnalyticsCharts(data) {
   }
 }
 
+let activeStreamFilter = "ALL";
+
+function setStreamFilter(stream) {
+  activeStreamFilter = stream;
+  ["ALL", "EIE", "ECE", "IT"].forEach(st => {
+    const btn = document.getElementById(`stream-btn-${st}`);
+    if (!btn) return;
+    if (st === stream) {
+      btn.className = "px-2.5 py-1 rounded-md bg-white text-teal-700 shadow-sm";
+    } else {
+      btn.className = "px-2.5 py-1 rounded-md text-slate-600 hover:text-slate-900";
+    }
+  });
+  filterStudentTable();
+}
+
 async function loadSubjectAnalytics() {
   const sel = document.getElementById("analytics-subject-select");
   if (!sel || !sel.value) return;
@@ -289,13 +305,21 @@ async function loadSubjectAnalytics() {
     const tbody = document.getElementById("student-table-body");
     tbody.innerHTML = "";
 
+    if (!data.students || data.students.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="9" class="py-8 text-center text-slate-400 font-medium">No students signed up in this stream yet. Students will appear here once they sign up at <code>/student</code>.</td></tr>`;
+      return;
+    }
+
     data.students.forEach((s, idx) => {
       const isShortage = (s.status === "Shortage" || s.attendance_percent < data.min_threshold);
+      const streamCode = s.department_code || "GEN";
       const tr = document.createElement("tr");
+      tr.dataset.stream = streamCode;
       tr.className = isShortage ? "bg-rose-50/40 hover:bg-rose-50/80 transition" : "hover:bg-slate-50 transition";
 
       tr.innerHTML = `
         <td class="py-2.5 px-4 text-slate-400 font-medium">${idx + 1}</td>
+        <td class="py-2.5 px-4"><span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-teal-50 text-teal-800 border border-teal-200">${streamCode}</span></td>
         <td class="py-2.5 px-4 font-bold text-slate-800">${s.roll_number}</td>
         <td class="py-2.5 px-4 font-medium text-slate-700">${s.full_name}</td>
         <td class="py-2.5 px-4 text-center text-slate-600">${s.classes_held}</td>
@@ -321,17 +345,21 @@ async function loadSubjectAnalytics() {
       `;
       tbody.appendChild(tr);
     });
+    filterStudentTable();
   } catch (e) {
     console.error("Failed to load subject analytics:", e);
   }
 }
 
 function filterStudentTable() {
-  const query = document.getElementById("student-search-input").value.toLowerCase();
+  const query = (document.getElementById("student-search-input")?.value || "").toLowerCase();
   const rows = document.querySelectorAll("#student-table-body tr");
   rows.forEach(row => {
     const text = row.innerText.toLowerCase();
-    row.style.display = text.includes(query) ? "" : "none";
+    const rowStream = row.dataset.stream || "ALL";
+    const matchesSearch = text.includes(query);
+    const matchesStream = (activeStreamFilter === "ALL" || !row.dataset.stream || rowStream === activeStreamFilter);
+    row.style.display = (matchesSearch && matchesStream) ? "" : "none";
   });
 }
 
@@ -672,10 +700,18 @@ async function populateBLEStudentSelect() {
     if (!sel) return;
 
     sel.innerHTML = "";
+    if (!students || students.length === 0) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "No registered students yet";
+      sel.appendChild(opt);
+      return;
+    }
     students.forEach(s => {
       const opt = document.createElement("option");
       opt.value = s.roll_number;
-      opt.textContent = `${s.roll_number} — ${s.full_name}`;
+      const stream = s.department_code ? `[${s.department_code}] ` : "";
+      opt.textContent = `${stream}${s.roll_number} — ${s.full_name}`;
       sel.appendChild(opt);
     });
   } catch (e) {

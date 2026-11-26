@@ -110,6 +110,8 @@ class StudentResponse(BaseModel):
     full_name: str
     email: str
     department_id: int
+    department_code: Optional[str] = None
+    department_name: Optional[str] = None
     semester: str
     academic_year: str
     is_active: bool
@@ -221,6 +223,7 @@ class StudentAnalyticsItem(BaseModel):
     student_id: int
     roll_number: str
     full_name: str
+    department_code: Optional[str] = None
     classes_held: int
     classes_attended: int
     attendance_percent: float
@@ -270,10 +273,12 @@ class StudentRegisterRequest(BaseModel):
     roll_number: str # e.g. "DETS-26-EIE-022"
     full_name: str
     email: str
-    password: str
-    department_id: Optional[int] = 1
+    password: Optional[str] = ""
+    department_id: Optional[int] = None
+    stream: Optional[str] = None # 'EIE', 'ECE', 'IT'
     semester: Optional[str] = "Semester 6"
     academic_year: Optional[str] = "2026-2027"
+    auth_provider: Optional[str] = "google" # 'google' or 'local'
 
 class StudentLoginRequest(BaseModel):
     identifier: str # roll_number OR email
